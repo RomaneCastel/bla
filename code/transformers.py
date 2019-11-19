@@ -11,8 +11,12 @@ At each layer, instead of dealing with a single image, it deals with several ima
  - the bias image;
  - one weight image per epsilon_i. The number of weight images can possibly increase by
  1 for each ReLU layer.
-Note that those images can be flatten.
-Therefore a zonotope will be represent as a tensor of size (1 + n_eps) x image height x image width 
+Note that those images can be flattened.
+Therefore a zonotope will be represented as a tensor of size (1 + n_eps) x image height x image width
+
+In other words, we group by error term instead of by dimension:
+    - the bias image is the matrix of all a0 coefficients for each dimension
+    - the weight image K is the matrix of all aK coefficients associated with the k'th error term
 
 Transforming a sequential network of several layers requires to be able to transform every
 layer. Also, the following relationship holds for zonotope transformation:
@@ -53,11 +57,11 @@ class TransformedInput(nn.Module):
                 for i_w in range(x.shape[3]):
                     pixel_value = x[i_batch, 0, i_h, i_w]
                     error_term = self.eps
-                    # modifies them if pixel_value is out of [eps, 1-eps]
-                    if pixel_value < error_term:
+                    # modifies them if pixel_value is out of [eps, 1-eps], to ensure range is within [0, 1]
+                    if pixel_value < error_term: # shift value to right and reduce error term to compensate
                         new_pixel_value = (pixel_value + error_term) / 2.
                         new_error_term = (error_term + pixel_value) / 2.
-                    elif pixel_value > 1 - error_term:
+                    elif pixel_value > 1 - error_term: # shift value to the left and reduce error term to compensate
                         new_pixel_value = (pixel_value + 1 - error_term) / 2.
                         new_error_term = (1 - pixel_value + error_term) / 2.
                     else:
@@ -108,6 +112,8 @@ class TransformedConv2D(nn.Module):
     def forward(self, x):
         shape_output = self.layer.forward(torch.zeros([1, 1, x.shape[2], x.shape[3]])).shape
         output = torch.zeros([x.shape[0], x.shape[1], shape_output[2], shape_output[3]], dtype=x.dtype)
+
+        # Apply conv to each image (matrix of coefficients), one by one
         output[:, 0, :, :] = self.layer.forward(x[:, 0, :, :].unsqueeze(1)).squeeze()
         for i in range(1, x.shape[1]):
             # no bias for error weight
