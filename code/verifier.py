@@ -1,12 +1,42 @@
 import argparse
 import torch
-from networks import FullyConnected, Conv
+from networks import FullyConnected, Conv, Normalization
+from transformers import TransformedNetwork, upper_lower
+import torch.nn as nn
+from torch import optim
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
+VERBOSE = True
+
+# TODO figure out why any image is always certified...
 
 
 def analyze(net, inputs, eps, true_label):
+    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
+    optimizer = optim.SGD(transformed_net.parameters(), lr=0.001, momentum=0.9)
+    for i in range(100):
+        torch.autograd.set_detect_anomaly(True)
+        output_zonotope = transformed_net.forward(inputs)
+        upper, lower = upper_lower(output_zonotope)
+        # we want to prove that the lower bound for the true label is smaller to the
+        # max upper bound for all the other labels
+        lower_bound = lower[0, true_label]
+        upper[0, true_label] = -1000000
+        upper_bound = torch.max(upper)
+        if upper_bound <= lower_bound:
+            return 1
+
+        # we want to minimize the max of upper bounds (mean used as max not really
+        # differentiable (same issue as L1 norm) and maximize the lower bound of
+        # the real class
+        loss = torch.mean(upper) - lower_bound
+        loss.backward()
+        optimizer.step()
+        transformed_net.clip_lambdas()
+
+        if VERBOSE:
+            print("Failed: " + str((upper_bound - lower_bound).item()))
     return 0
 
 
