@@ -262,5 +262,44 @@ class TransformedNetwork(nn.Module):
             if isinstance(layer, TransformedReLU):
                 layer.clip_lambda()
 
+    def assert_only_relu_params_changed(self, old_params):
+        # quality assessment method, to verify that only wanted params changed
+        i = 0
+        new_params = []
+        for layer in self.layers:
+            for param in layer.parameters():
+                if not isinstance(layer, TransformedReLU):
+                    assert torch.equal(old_params[i], param), \
+                        'Param %d changed, problem with ' % i + type(layer).__name__
+                new_params.append(param)
+                i += 1
+        return new_params
+
+    def assert_valid_lambda_values(self):
+        # assert that no lambda gets out of range
+        for layer in self.layers:
+            for param in layer.parameters():
+                if isinstance(layer, TransformedReLU):
+                    assert torch.max(param) <= 1, \
+                        'Some lambda values over 1'
+                    assert torch.min(param) >= 0, \
+                        'Some lambda values under 0'
+
+    def get_mean_lambda_values(self):
+        # return mean lambda for every relu layer, for debugging purposes
+        values = []
+        for layer in self.layers:
+            if isinstance(layer, TransformedReLU):
+                for param in layer.parameters():
+                    values.append(torch.mean(param).item())
+        return values
+
+    def get_params(self):
+        params = []
+        for i, layer in enumerate(self.layers):
+            for param in layer.parameters():
+                params.append(param)
+        return params
+
     def forward(self, x):
         return self.layers(x)

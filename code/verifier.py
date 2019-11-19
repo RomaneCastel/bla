@@ -17,6 +17,7 @@ VERBOSE = True
 
 def analyze(net, inputs, eps, true_label):
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
+    parameters = list(transformed_net.get_params())
     optimizer = optim.SGD(transformed_net.parameters(), lr=0.001, momentum=0.9)
     for i in range(100):
         torch.autograd.set_detect_anomaly(True)
@@ -39,8 +40,13 @@ def analyze(net, inputs, eps, true_label):
         optimizer.step()
         transformed_net.clip_lambdas()
 
+        # few sanity checks
+        parameters = transformed_net.assert_only_relu_params_changed(parameters)
+        transformed_net.assert_valid_lambda_values()
+
         if VERBOSE:
             print("Failed: " + str((upper_bound - lower_bound).item()))
+            print(transformed_net.get_mean_lambda_values())
     return 0
 
 
