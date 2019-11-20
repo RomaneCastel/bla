@@ -14,6 +14,8 @@ VERBOSE = True
 # Possible improvements:
 # 1) Use a more advanced optimizer than SGD, like Adam
 # 2) Optimize the number of iterations
+MODE = "NO DEBUG"
+
 
 def analyze(net, inputs, eps, true_label):
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
@@ -40,11 +42,11 @@ def analyze(net, inputs, eps, true_label):
         optimizer.step()
         transformed_net.clip_lambdas()
 
-        # few sanity checks
-        parameters = transformed_net.assert_only_relu_params_changed(parameters)
-        transformed_net.assert_valid_lambda_values()
+        if MODE == "DEBUG":
+            # few sanity checks
+            parameters = transformed_net.assert_only_relu_params_changed(parameters)
+            transformed_net.assert_valid_lambda_values()
 
-        if VERBOSE:
             print("Failed: " + str((upper_bound - lower_bound).item()))
             print(transformed_net.get_mean_lambda_values())
     return 0
