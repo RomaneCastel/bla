@@ -159,8 +159,9 @@ class TransformedReLU(nn.Module):
             self._set_lambda(lower, upper)
 
         transformed_x = torch.zeros(x.shape)
-        # modifying bias: bias = lambda * bias - lambda * lower / 2
-        transformed_x[:, 0] = self.lambda_ * x[:, 0] - self.lambda_ * lower / 2
+        # modifying bias: bias = lambda * bias - delta / 2
+        delta = torch.max(-self.lambda_ * lower, (1 - self.lambda_) * upper)
+        transformed_x[:, 0] = self.lambda_ * x[:, 0] + delta / 2
         # modifying already existing error weights
         transformed_x[:, 1:] = x[:, 1:] * self.lambda_
         # adding new error weights
@@ -180,7 +181,9 @@ class TransformedReLU(nn.Module):
             i_error = n_old_error_weights
             for i in range(x.shape[2]):
                 if has_new_error_term[0, i] == 1:
-                    final_x[:, i_error, i] = -self.lambda_[:, i] * lower[:, i] / 2
+                    delta = torch.max(-self.lambda_[:, i] * lower[:, i],
+                                      (1 - self.lambda_[:, i]) * upper[:, i])
+                    final_x[:, i_error, i] = -delta / 2
                     i_error += 1
         # when image
         else:
@@ -188,7 +191,9 @@ class TransformedReLU(nn.Module):
             for i in range(x.shape[2]):
                 for j in range(x.shape[3]):
                     if has_new_error_term[0, i, j] == 1:
-                        final_x[:, i_error, i, j] = -self.lambda_[:, i, j] * lower[:, i, j] / 2
+                        delta = torch.max(-self.lambda_[:, i, j] * lower[:, i, j],
+                                          (1 - self.lambda_[:, i, j]) * upper[:, i, j])
+                        final_x[:, i_error, i] = -delta / 2
                         i_error += 1
 
         return final_x
