@@ -7,9 +7,7 @@ from torch import optim
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
-VERBOSE = True
-
-# TODO figure out why any image is always certified...
+MODE = "NO DEBUG"
 
 
 def analyze(net, inputs, eps, true_label):
@@ -36,11 +34,11 @@ def analyze(net, inputs, eps, true_label):
         optimizer.step()
         transformed_net.clip_lambdas()
 
-        # few sanity checks
-        parameters = transformed_net.assert_only_relu_params_changed(parameters)
-        transformed_net.assert_valid_lambda_values()
+        if MODE == "DEBUG":
+            # few sanity checks
+            parameters = transformed_net.assert_only_relu_params_changed(parameters)
+            transformed_net.assert_valid_lambda_values()
 
-        if VERBOSE:
             print("Failed: " + str((upper_bound - lower_bound).item()))
             print(transformed_net.get_mean_lambda_values())
     return 0
