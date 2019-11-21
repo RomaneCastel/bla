@@ -16,7 +16,7 @@ folders = ['conv1', 'conv2', 'conv3', 'conv4', 'conv5','fc1','fc2','fc3','fc4','
 folder = 0
 for img in range(len(X_train)):
 	np.savetxt("../dataset/"+folders[folder]+"/img"+str(math.floor(image/10))+"_{0:.5f}".format(epsilon)+".txt", X_train_flattened[i], delimiter='\n')
-	with open("../dataset/"+folders[folder]+"/img"+str(math.floor(image/10))+"_{0:.5f}".format(epsilon)+".txt", 'w+') as file:
+	with open("../dataset/"+folders[folder]+"/img"+str(math.floor(image/10))+"_{0:.5f}".format(epsilon)+".txt", 'r+') as file:
 		a = file.read()
 		with open("../dataset/"+folders[folder]+"/img"+str(math.floor(image/10))+"_{0:.5f}".format(epsilon)+".txt", 'w+') as file:
 			file.write(str(y_train[i])+'\n'+a)
