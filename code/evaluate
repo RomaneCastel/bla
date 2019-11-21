@@ -1,18 +1,27 @@
 #!/bin/bash
 
-for net in fc1 fc2 fc3 fc4 fc5 conv1 conv2 conv3 conv4 conv5
+for net in fc1 fc2 fc3 fc4 fc5 
 do
 	echo Evaluating network ${net}...
 	for spec in `ls ../test_cases/${net}`
-	do
-		out=$(python3 verifier.py --net ${net} --spec ../test_cases/${net}/${spec})
-		verified="verified"
-		if [ "$out" == "$verified" ] 
-		then	
-			decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
-			root="0."
-			eps="${root}${decimals}"
-			python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01
+	do	
+		echo $spec
+		perturbed="perturbed"
+		if [[ "$spec" == *"$perturbed"* ]]
+		then
+			:
+		else
+			echo "in"
+			out=$(python3 verifier.py --net ${net} --spec ../test_cases/${net}/${spec})
+			echo "$out"
+			verified="verified"
+			if [ "$out" == "$verified" ] 
+			then	
+				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
+				root="0."
+				eps="${root}${decimals}"
+				python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01
+			fi
 		fi
 	done
 done
