@@ -5,6 +5,14 @@ do
 	echo Evaluating network ${net}...
 	for spec in `ls ../test_cases/${net}`
 	do
-		python verifier.py --net ${net} --spec ../test_cases/${net}/${spec}
+		out=$(python3 verifier.py --net ${net} --spec ../test_cases/${net}/${spec})
+		verified="verified"
+		if [ "$out" == "$verified" ] 
+		then	
+			decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
+			root="0."
+			eps="${root}${decimals}"
+			python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01
+		fi
 	done
 done
