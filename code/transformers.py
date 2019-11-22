@@ -177,18 +177,38 @@ class TransformedReLU(nn.Module):
             self._set_lambda(lower, upper)
 
         transformed_x = torch.zeros(x.shape)
-        # modifying bias: bias = lambda * bias - delta / 2
+        # delta is the difference in height between top and bottom lines
+        # how to compute delta ?
+        #   - bottom border is lambda * x
+        #   - top border has the following lambda * x + delta, with delta to determine
+        #     top border is above ReLU curve in u, so lambda * u + delta >= u
+        #     top border is above ReLU curve in l, so lambda * l + delta >= 0
+        #     delta >= (1 - lambda) * u
+        #     delta >= -lambda * l
+        #     so delta >= max((1 - lambda) * u, -lambda * l), and we take equality
+        #   - difference between the two lines is delta = max((1 - lambda) * u, -lambda * l)
+        # the new bias is therefore (in crossing border cases) delta/2
         delta = torch.max(-self.lambda_ * lower, (1 - self.lambda_) * upper)
-        transformed_x[:, 0] = self.lambda_ * x[:, 0] + delta / 2
+
+        # for crossing border cases, we modify bias
+        # for negative case, we 0 is the new bias
+        # for positive case, we don't change anything
+        transformed_x[:, 0] = (delta / 2) * (lower * upper < 0).type(torch.FloatTensor) \
+            + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
+
+        # for crossing border cases, we multiply by lambda error weights
+        # for positive cases, we don't change anything
+        # for negative cases, it is 0
         # modifying already existing error weights
-        transformed_x[:, 1:] = x[:, 1:] * self.lambda_.unsqueeze(1)
+        transformed_x[:, 1:] = x[:, 1:] * self.lambda_.unsqueeze(1) * (lower * upper < 0).type(torch.FloatTensor) \
+            + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
 
         # adding new error weights
         # correct as batch_size is equal to 1 here
         n_old_error_weights = x.shape[1]
-        has_new_error_term = (lower < 0).type(torch.FloatTensor) \
-                             * (upper > 0).type(torch.FloatTensor)
+        has_new_error_term = (lower * upper < 0).type(torch.FloatTensor)
         n_new_error_weights = int(torch.sum(has_new_error_term).item())
+        # create new tensor that is able to host all the new error terms
         if len(x.shape) == 3:
             final_x = torch.cat([transformed_x, torch.zeros([x.shape[0], n_new_error_weights, x.shape[2]])], dim=1)
         else:
@@ -214,7 +234,6 @@ class TransformedReLU(nn.Module):
                     final_x[:, i_error, i] = delta[:, i] / 2
                     i_error += 1
         # when image
-        # (only one batch handled)
         # seems to be REALLY slow
         # TODO How to fix it / make it faster
         else:

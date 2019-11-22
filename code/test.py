@@ -4,6 +4,7 @@ import torch.nn as nn
 from transformers import TransformedInput, TransformedNetwork, TransformedReLU, TransformedFlatten, TransformedNormalization, TransformedLinear, TransformedConv2D
 from networks import Normalization, FullyConnected, Conv
 from torch.nn import Linear
+import numpy as np
 
 
 """
@@ -258,6 +259,24 @@ class TransformedReluTester(unittest.TestCase):
             ]
         ])
 
+        lambda_vector_input = [0, 0, 1, 1]
+        lambda_vector_error_weight = [1, 1, 0, 2]
+        lambda_vector_zonotope = torch.FloatTensor([[lambda_vector_input, lambda_vector_error_weight]])
+        transformed_relu = TransformedReLU(torch.Size([1, 3]))
+        transformed_relu.lambda_.data = torch.FloatTensor([[0, 1, 0.5, 1/3]])
+        transformed_relu.is_lambda_set = True
+        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope)
+        self.expected_lambda_vector_output = torch.FloatTensor([
+            [
+                [0.5, 0.5, 1, 1],
+                [0, 1, 0, 2/3],
+                [0.5, 0, 0, 0],
+                [0, 0.25, 0, 0],
+                [0, 0, 0, 1/3]
+            ]
+        ])
+
+
     def test_size_image(self):
         assert self.expected_image_output.size() == self.image_output.size(), \
             "Different sizes (for image input)"
@@ -281,6 +300,20 @@ class TransformedReluTester(unittest.TestCase):
     def test_error_vector(self):
         assert self.expected_vector_output[:, 1:].equal(self.vector_output[:, 1:]), \
             "Error for error weights (for vector input)"
+
+    def test_bias_lambda_vector(self):
+        exp = self.expected_lambda_vector_output[:, 0]
+        out = self.lambda_vector_output[:, 0]
+        diff = torch.sum(exp - out).item()
+        assert diff < 1e-4, \
+            "Error for bias term (for specific lambda vector input)"
+
+    def test_error_lambda_vector(self):
+        exp = self.expected_lambda_vector_output[:, 1:]
+        out = self.lambda_vector_output[:, 1:]
+        diff = torch.sum(exp - out).item()
+        assert diff < 1e-4, \
+            "Error for error weights (for specific lambda vector input)"
 
 
 class TransformedNetworkTester(unittest.TestCase):
