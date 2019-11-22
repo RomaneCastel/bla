@@ -86,7 +86,7 @@ class TransformedNormalization(nn.Module):
         self.sigma = normalization_layer.sigma[0, 0, 0, 0]
 
     def forward(self, x):
-        x[:, :, 0, :, :] -= self.mean
+        x[:, 0, :, :, :] -= self.mean
         x /= self.sigma
         return x
 
@@ -161,8 +161,8 @@ class TransformedReLU(nn.Module):
                        + (lower < 0).type(torch.FloatTensor) \
                        * (upper > 0).type(torch.FloatTensor) \
                        * upper / (upper - lower)
-        # set all nans to 0
-        _lambda[self.lambda_ != self.lambda_] = 0
+        # set all nans to 1
+        _lambda[_lambda != _lambda] = 1
         self.lambda_.data = _lambda
         self.is_lambda_set = True
 
@@ -211,7 +211,7 @@ class TransformedReLU(nn.Module):
             i_error = n_old_error_weights
             for i in range(x.shape[2]):
                 if has_new_error_term[0, i] == 1:
-                    final_x[:, i_error, i] = -delta[:, i] / 2
+                    final_x[:, i_error, i] = delta[:, i] / 2
                     i_error += 1
         # when image
         # (only one batch handled)
@@ -223,7 +223,7 @@ class TransformedReLU(nn.Module):
                 for i in range(x.shape[3]):
                     for j in range(x.shape[4]):
                         if has_new_error_term[0, f, i, j] == 1:
-                            final_x[0, i_error, f, i, j] = -delta[0, f, i, j] / 2
+                            final_x[0, i_error, f, i, j] = delta[0, f, i, j] / 2
                             i_error += 1
         return final_x
 

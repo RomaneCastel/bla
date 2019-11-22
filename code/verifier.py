@@ -29,7 +29,7 @@ def analyze(net, inputs, eps, true_label):
         # max upper bound for all the other labels, because this means the true label value
         # will always be bigger than the other labels, and so the classification will be correct
         lower_bound = lower[0, true_label]
-        upper[0, true_label] = -1000000 # Ignore upper bound of the true label
+        upper[0, true_label] = -1000000  # Ignore upper bound of the true label
         upper_bound = torch.max(upper)
         if upper_bound <= lower_bound:
             return 1
