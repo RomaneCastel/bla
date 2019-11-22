@@ -4,9 +4,16 @@ from networks import FullyConnected, Conv, Normalization
 from transformers import TransformedNetwork, upper_lower
 import torch.nn as nn
 from torch import optim
+from common import loadNetwork
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
+VERBOSE = True
+
+# TODO figure out why any image is always certified...
+# Possible improvements:
+# 1) Use a more advanced optimizer than SGD, like Adam
+# 2) Optimize the number of iterations
 MODE = "NO DEBUG"
 
 
@@ -18,10 +25,11 @@ def analyze(net, inputs, eps, true_label):
         torch.autograd.set_detect_anomaly(True)
         output_zonotope = transformed_net.forward(inputs)
         upper, lower = upper_lower(output_zonotope)
-        # we want to prove that the lower bound for the true label is smaller to the
-        # max upper bound for all the other labels
+        # we want to prove that the lower bound for the true label is smaller than the
+        # max upper bound for all the other labels, because this means the true label value
+        # will always be bigger than the other labels, and so the classification will be correct
         lower_bound = lower[0, true_label]
-        upper[0, true_label] = -1000000
+        upper[0, true_label] = -1000000 # Ignore upper bound of the true label
         upper_bound = torch.max(upper)
         if upper_bound <= lower_bound:
             return 1
@@ -60,28 +68,7 @@ def main():
         pixel_values = [float(line) for line in lines[1:]]
         eps = float(args.spec[:-4].split('/')[-1].split('_')[-1])
 
-    if args.net == 'fc1':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [100, 10]).to(DEVICE)
-    elif args.net == 'fc2':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [50, 50, 10]).to(DEVICE)
-    elif args.net == 'fc3':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [100, 100, 10]).to(DEVICE)
-    elif args.net == 'fc4':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [100, 100, 100, 10]).to(DEVICE)
-    elif args.net == 'fc5':
-        net = FullyConnected(DEVICE, INPUT_SIZE, [400, 200, 100, 100, 10]).to(DEVICE)
-    elif args.net == 'conv1':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1)], [100, 10], 10).to(DEVICE)
-    elif args.net == 'conv2':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)], [100, 10], 10).to(DEVICE)
-    elif args.net == 'conv3':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [150, 10], 10).to(DEVICE)
-    elif args.net == 'conv4':
-        net = Conv(DEVICE, INPUT_SIZE, [(32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10).to(DEVICE)
-    elif args.net == 'conv5':
-        net = Conv(DEVICE, INPUT_SIZE, [(16, 3, 1, 1), (32, 4, 2, 1), (64, 4, 2, 1)], [100, 100, 10], 10).to(DEVICE)
-
-    net.load_state_dict(torch.load('../mnist_nets/%s.pt' % args.net, map_location=torch.device(DEVICE)))
+    net = loadNetwork(args, DEVICE)
 
     inputs = torch.FloatTensor(pixel_values).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     outs = net(inputs)
