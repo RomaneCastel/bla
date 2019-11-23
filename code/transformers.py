@@ -11,12 +11,8 @@ At each layer, instead of dealing with a single image, it deals with several ima
  - the bias image;
  - one weight image per epsilon_i. The number of weight images can possibly increase by
  1 for each ReLU layer.
-Note that those images can be flattened.
-Therefore a zonotope will be represented as a tensor of size (1 + n_eps) x image height x image width
-
-In other words, we group by error term instead of by dimension:
-    - the bias image is the matrix of all a0 coefficients for each dimension
-    - the weight image K is the matrix of all aK coefficients associated with the k'th error term
+Note that those images can be flatten.
+Therefore a zonotope will be represent as a tensor of size (1 + n_eps) x image height x image width 
 
 Transforming a sequential network of several layers requires to be able to transform every
 layer. Also, the following relationship holds for zonotope transformation:
@@ -45,33 +41,40 @@ class TransformedInput(nn.Module):
 
     def forward(self, x):
         # creates all the height x width error matrices/vectors
-        # x is of size batch_size x 1 x width x height
-        # output is of size batch_size x (1 + h x w) x width x height
+        # x is of size batch_size x n_features x width x height
+        # output is of size batch_size x (1 + h x w x n_features)
+        #                          x n_features x width x height
         zonotope = torch.zeros(
-            [x.shape[0], 1+x.shape[2]*x.shape[3], x.shape[2], x.shape[3]],
+            [x.shape[0],
+             1+x.shape[1]*x.shape[2]*x.shape[3],
+             x.shape[1],
+             x.shape[2],
+             x.shape[3]
+            ],
             dtype=x.dtype)
 
         for i_batch in range(x.shape[0]):
-            i_error = 1
-            for i_h in range(x.shape[2]):
-                for i_w in range(x.shape[3]):
-                    pixel_value = x[i_batch, 0, i_h, i_w]
-                    error_term = self.eps
-                    # modifies them if pixel_value is out of [eps, 1-eps], to ensure range is within [0, 1]
-                    if pixel_value < error_term: # shift value to right and reduce error term to compensate
-                        new_pixel_value = (pixel_value + error_term) / 2.
-                        new_error_term = (error_term + pixel_value) / 2.
-                    elif pixel_value > 1 - error_term: # shift value to the left and reduce error term to compensate
-                        new_pixel_value = (pixel_value + 1 - error_term) / 2.
-                        new_error_term = (1 - pixel_value + error_term) / 2.
-                    else:
-                        new_error_term = error_term
-                        new_pixel_value = pixel_value
-                    # add bias value
-                    zonotope[i_batch, 0, i_h, i_w] = new_pixel_value
-                    # add error value
-                    zonotope[i_batch, i_error, i_h, i_w] = new_error_term
-                    i_error += 1
+            for f in range(x.shape[1]):
+                i_error = 1
+                for i_h in range(x.shape[2]):
+                    for i_w in range(x.shape[3]):
+                        pixel_value = x[i_batch, f, i_h, i_w]
+                        error_term = self.eps
+                        # modifies them if pixel_value is out of [eps, 1-eps]
+                        if pixel_value < error_term:
+                            new_pixel_value = (pixel_value + error_term) / 2.
+                            new_error_term = (error_term + pixel_value) / 2.
+                        elif pixel_value > 1 - error_term:
+                            new_pixel_value = (pixel_value + 1 - error_term) / 2.
+                            new_error_term = (1 - pixel_value + error_term) / 2.
+                        else:
+                            new_error_term = error_term
+                            new_pixel_value = pixel_value
+                        # add bias value
+                        zonotope[i_batch, 0, f, i_h, i_w] = new_pixel_value
+                        # add error value
+                        zonotope[i_batch, i_error, f, i_h, i_w] = new_error_term
+                        i_error += 1
 
         return zonotope
 
@@ -83,7 +86,7 @@ class TransformedNormalization(nn.Module):
         self.sigma = normalization_layer.sigma[0, 0, 0, 0]
 
     def forward(self, x):
-        x[:, 0, :, :] -= self.mean
+        x[:, 0, :, :, :] -= self.mean
         x /= self.sigma
         return x
 
@@ -98,6 +101,7 @@ class TransformedLinear(nn.Module):
         # input of size batch_size x (n_eps + 1) x in_features
         # output of size batch_size x (n_eps + 1) x out_features
         # bias receives full affine transform, error weights only the linear part
+        # TODO really handled ? error by error ?
         output = F.linear(x, self.layer.weight, None)  # no bias for the moment
         if self.layer.bias is not None:
             output[:, 0, :] += self.layer.bias
@@ -110,14 +114,19 @@ class TransformedConv2D(nn.Module):
         self.layer = layer
 
     def forward(self, x):
-        shape_output = self.layer.forward(torch.zeros([1, 1, x.shape[2], x.shape[3]])).shape
-        output = torch.zeros([x.shape[0], x.shape[1], shape_output[2], shape_output[3]], dtype=x.dtype)
-
-        # Apply conv to each image (matrix of coefficients), one by one
-        output[:, 0, :, :] = self.layer.forward(x[:, 0, :, :].unsqueeze(1)).squeeze()
+        # input of shape
+        # batch_size x 1+n_errors x in_features x h x w
+        # output of shape
+        # batch_size x 1+n_errors x out_features x h' x w'
+        in_features = self.layer.weight.shape[1]
+        shape_output = self.layer.forward(torch.zeros([x.shape[2], in_features, x.shape[3], x.shape[4]])).shape
+        out_features = shape_output[1]
+        output = torch.zeros([x.shape[0], x.shape[1], out_features, shape_output[2], shape_output[3]], dtype=x.dtype)
+        output[:, 0, :, :, :] = self.layer.forward(x[:, 0, :, :, :]).squeeze()
         for i in range(1, x.shape[1]):
             # no bias for error weight
-            output[:, i, :, :] = self.layer.forward(x[:, i, :, :].unsqueeze(1)).squeeze() - self.layer.bias
+            output[:, i, :, :, :] = self.layer.forward(x[:, i, :, :, :])
+            output[:, i, :, :, :] -= self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
         return output
 
@@ -125,11 +134,14 @@ class TransformedConv2D(nn.Module):
 class TransformedFlatten(nn.Module):
     def __init__(self):
         super().__init__()
-        self.start_dim = -2
+        self.start_dim = -3
         self.end_dim = -1
 
     def forward(self, x):
-        # you just want to flatten the last 2 dimensions
+        # input of shape
+        # batch_size x 1+n_errors x n_features x h x w
+        # output of shape
+        # batch_size x 1+n_errors x (n_features * h * w)
         return x.flatten(self.start_dim, self.end_dim)
 
 
@@ -149,15 +161,15 @@ class TransformedReLU(nn.Module):
                        + (lower < 0).type(torch.FloatTensor) \
                        * (upper > 0).type(torch.FloatTensor) \
                        * upper / (upper - lower)
-        # set all nans to 0
-        _lambda[self.lambda_ != self.lambda_] = 0
+        # set all nans to 1
+        _lambda[_lambda != _lambda] = 1
         self.lambda_.data = _lambda
         self.is_lambda_set = True
 
     def forward(self, x):
         # computes minimum and maximum boundaries for every input value
-        # upper and lower bound are tensor of size batch_size x ((h x w) || vector_size)
-        # creates the batch_size x vector_size lambda values
+        # upper and lower bound are tensor of size batch_size x n_features x ((h x w) || vector_size)
+        # creates the n_features x batch_size x vector_size lambda values
         upper, lower = upper_lower(x)
 
         # lambda has a size of batch_size x ((h x w) || vector_size)
@@ -165,43 +177,73 @@ class TransformedReLU(nn.Module):
             self._set_lambda(lower, upper)
 
         transformed_x = torch.zeros(x.shape)
-        # modifying bias: bias = lambda * bias - delta / 2
+        # delta is the difference in height between top and bottom lines
+        # how to compute delta ?
+        #   - bottom border is lambda * x
+        #   - top border has the following lambda * x + delta, with delta to determine
+        #     top border is above ReLU curve in u, so lambda * u + delta >= u
+        #     top border is above ReLU curve in l, so lambda * l + delta >= 0
+        #     delta >= (1 - lambda) * u
+        #     delta >= -lambda * l
+        #     so delta >= max((1 - lambda) * u, -lambda * l), and we take equality
+        #   - difference between the two lines is delta = max((1 - lambda) * u, -lambda * l)
+        # the new bias is therefore (in crossing border cases) delta/2
         delta = torch.max(-self.lambda_ * lower, (1 - self.lambda_) * upper)
-        transformed_x[:, 0] = self.lambda_ * x[:, 0] + delta / 2
+
+        # for crossing border cases, we modify bias
+        # for negative case, we 0 is the new bias
+        # for positive case, we don't change anything
+        transformed_x[:, 0] = (delta / 2) * (lower * upper < 0).type(torch.FloatTensor) \
+            + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
+
+        # for crossing border cases, we multiply by lambda error weights
+        # for positive cases, we don't change anything
+        # for negative cases, it is 0
         # modifying already existing error weights
-        transformed_x[:, 1:] = x[:, 1:] * self.lambda_
+        transformed_x[:, 1:] = x[:, 1:] * self.lambda_.unsqueeze(1) * (lower * upper < 0).type(torch.FloatTensor) \
+            + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
+
         # adding new error weights
         # correct as batch_size is equal to 1 here
         n_old_error_weights = x.shape[1]
-        has_new_error_term = (lower < 0).type(torch.FloatTensor) \
-                             * (upper > 0).type(torch.FloatTensor)
+        has_new_error_term = (lower * upper < 0).type(torch.FloatTensor)
         n_new_error_weights = int(torch.sum(has_new_error_term).item())
+        # create new tensor that is able to host all the new error terms
         if len(x.shape) == 3:
             final_x = torch.cat([transformed_x, torch.zeros([x.shape[0], n_new_error_weights, x.shape[2]])], dim=1)
         else:
-            final_x = torch.cat([transformed_x, torch.zeros([x.shape[0], n_new_error_weights, x.shape[2], x.shape[3]])], dim=1)
-        # filling new error terms
+            final_x = torch.cat(
+                [transformed_x,
+                 torch.zeros(
+                     [x.shape[0],
+                      n_new_error_weights,
+                      x.shape[2],
+                      x.shape[3],
+                      x.shape[4]
+                     ]
+                 )
+                ],
+            dim=1)
 
+        # filling new error terms
         # when vector
         if len(x.shape) == 3:
             i_error = n_old_error_weights
             for i in range(x.shape[2]):
                 if has_new_error_term[0, i] == 1:
-                    delta = torch.max(-self.lambda_[:, i] * lower[:, i],
-                                      (1 - self.lambda_[:, i]) * upper[:, i])
-                    final_x[:, i_error, i] = -delta / 2
+                    final_x[:, i_error, i] = delta[:, i] / 2
                     i_error += 1
         # when image
+        # seems to be REALLY slow
+        # TODO How to fix it / make it faster
         else:
             i_error = n_old_error_weights
-            for i in range(x.shape[2]):
-                for j in range(x.shape[3]):
-                    if has_new_error_term[0, i, j] == 1:
-                        delta = torch.max(-self.lambda_[:, i, j] * lower[:, i, j],
-                                          (1 - self.lambda_[:, i, j]) * upper[:, i, j])
-                        final_x[:, i_error, i] = -delta / 2
-                        i_error += 1
-
+            for f in range(x.shape[2]):
+                for i in range(x.shape[3]):
+                    for j in range(x.shape[4]):
+                        if has_new_error_term[0, f, i, j] == 1:
+                            final_x[0, i_error, f, i, j] = delta[0, f, i, j] / 2
+                            i_error += 1
         return final_x
 
     def clip_lambda(self):
@@ -219,7 +261,7 @@ class LayerTransformer:
         elif isinstance(layer, nn.Linear):
             return TransformedLinear(layer)
         elif isinstance(layer, nn.Conv2d):
-            return TransformedLinear(layer)
+            return TransformedConv2D(layer)
         elif isinstance(layer, nn.Flatten):
             return TransformedFlatten()
         elif isinstance(layer, nn.ReLU):
@@ -233,10 +275,7 @@ class TransformedNetwork(nn.Module):
     def __init__(self, network, eps, input_size):
         super().__init__()
         # if conv network
-        if isinstance(network, Conv):
-            self.input_size = [1, 1, input_size, input_size]
-        else:
-            self.input_size = [1, 1, input_size * input_size]
+        self.input_size = [1, 1, input_size, input_size]
         self.initial_network_layers = network.layers
         shapes = self.get_shape_after_each_layer()
 

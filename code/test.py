@@ -4,6 +4,7 @@ import torch.nn as nn
 from transformers import TransformedInput, TransformedNetwork, TransformedReLU, TransformedFlatten, TransformedNormalization, TransformedLinear, TransformedConv2D
 from networks import Normalization, FullyConnected, Conv
 from torch.nn import Linear
+import numpy as np
 
 
 """
@@ -18,15 +19,15 @@ class TransformedInputTester(unittest.TestCase):
         eps = 0.1
         transformed_input = TransformedInput(eps)
         self.output = transformed_input.forward(input)
-        self.expected_output = torch.zeros([1, 5, 2, 2])
-        self.expected_output[0, 0, 0, 0] = eps / 2
-        self.expected_output[0, 0, 0, 1] = 1 - eps / 2
-        self.expected_output[0, 0, 1, 0] = 0.3
-        self.expected_output[0, 0, 1, 1] = 0.7
-        self.expected_output[0, 1, 0, 0] = eps / 2
-        self.expected_output[0, 2, 0, 1] = eps / 2
-        self.expected_output[0, 3, 1, 0] = eps
-        self.expected_output[0, 4, 1, 1] = eps
+        self.expected_output = torch.zeros([1, 5, 1, 2, 2])
+        self.expected_output[0, 0, 0, 0, 0] = eps / 2
+        self.expected_output[0, 0, 0, 0, 1] = 1 - eps / 2
+        self.expected_output[0, 0, 0, 1, 0] = 0.3
+        self.expected_output[0, 0, 0, 1, 1] = 0.7
+        self.expected_output[0, 1, 0, 0, 0] = eps / 2
+        self.expected_output[0, 2, 0, 0, 1] = eps / 2
+        self.expected_output[0, 3, 0, 1, 0] = eps
+        self.expected_output[0, 4, 0, 1, 1] = eps
 
     def test_size(self):
         assert self.expected_output.size() == self.output.size(), \
@@ -54,15 +55,19 @@ class TransformedNormalizationTester(unittest.TestCase):
         transformed_normalization = TransformedNormalization(normalization_layer)
         self.output = transformed_normalization.forward(input)
 
-        self.expected_output = torch.zeros([1, 5, 2, 2])
-        self.expected_output[0, 0, 0, 0] = (eps / 2 - mean) / sigma
-        self.expected_output[0, 0, 0, 1] = (1 - eps / 2 - mean) / sigma
-        self.expected_output[0, 0, 1, 0] = (0.3 - mean) / sigma
-        self.expected_output[0, 0, 1, 1] = (0.7 - mean) / sigma
-        self.expected_output[0, 1, 0, 0] = eps / 2 / sigma
-        self.expected_output[0, 2, 0, 1] = eps / 2 / sigma
-        self.expected_output[0, 3, 1, 0] = eps / sigma
-        self.expected_output[0, 4, 1, 1] = eps / sigma
+        self.expected_output = torch.zeros([1, 5, 1, 2, 2])
+        self.expected_output[0, 0, 0, 0, 0] = (eps / 2 - mean) / sigma
+        self.expected_output[0, 0, 0, 0, 1] = (1 - eps / 2 - mean) / sigma
+        self.expected_output[0, 0, 0, 1, 0] = (0.3 - mean) / sigma
+        self.expected_output[0, 0, 0, 1, 1] = (0.7 - mean) / sigma
+        self.expected_output[0, 1, 0, 0, 0] = eps / 2 / sigma
+        self.expected_output[0, 2, 0, 0, 1] = eps / 2 / sigma
+        self.expected_output[0, 3, 0, 1, 0] = eps / sigma
+        self.expected_output[0, 4, 0, 1, 1] = eps / sigma
+
+    def test_size(self):
+        assert self.expected_output.size() == self.output.size(), \
+            "Different sizes"
 
     def test_bias(self):
         assert self.expected_output[:, 0].equal(self.output[:, 0]), \
@@ -134,28 +139,28 @@ class TransformedConv2DTester(unittest.TestCase):
         conv_layer.weight = kernel_filter
         conv_layer.bias[0] = bias
 
-        image = [
+        image = [[
             [-2, 1, 3],
             [0, 1, -1],
             [1, -2, 1]
-        ]
+        ]]
         # only one for simpler test
-        error_weight = [
+        error_weight = [[
             [0, 0, 0],
             [1, 0, 0],
             [0, 0, 0]
-        ]
+        ]]
         input = torch.FloatTensor([[image, error_weight]])
         transformed_conv = TransformedConv2D(conv_layer)
 
         self.expected_output = torch.FloatTensor([
             [
-                [[0, 0, 4],
+                [[[0, 0, 4],
                  [1, 6, 1],
-                 [3, -1, -1]],
-                [[1, 0, 0],
+                 [3, -1, -1]]],
+                [[[1, 0, 0],
                  [1, 1, 0],
-                 [0, -1, 0]]
+                 [0, -1, 0]]]
             ],
         ])
 
@@ -176,16 +181,16 @@ class TransformedConv2DTester(unittest.TestCase):
 
 class TransformedFlattenTester(unittest.TestCase):
     def setUp(self):
-        image = [
+        image = [[
             [-2, 1, 3],
             [0, 1, -1],
             [1, -2, 1]
-        ]
-        error_weight = [
+        ]]
+        error_weight = [[
             [0, 0, 0],
             [1, 0, 0],
             [0, 0, 0]
-        ]
+        ]]
         input = torch.FloatTensor([[image, error_weight]])
         transformed_flatten = TransformedFlatten()
 
@@ -213,38 +218,38 @@ class TransformedFlattenTester(unittest.TestCase):
 
 class TransformedReluTester(unittest.TestCase):
     def setUp(self):
-        image_input = [
+        image_input = [[
             [0, 1],
-            [-0.5, 0]
-        ]
-        image_error_weight = [
+            [-0.5, 0.5]
+        ]]
+        image_error_weight = [[
             [1, -1],
             [0.5, 0]
-        ]
+        ]]
         image_zonotope = torch.FloatTensor([[image_input, image_error_weight]])
 
         vector_input = [0, 1, -0.5, 0]
         vector_error_weight = [1, -1, 0.5, 0]
         vector_zonotope = torch.FloatTensor([[vector_input, vector_error_weight]])
 
-        transformed_relu = TransformedReLU()
+        transformed_relu = TransformedReLU(torch.Size([1, 1, 2, 2]))
         self.image_output = transformed_relu.forward(image_zonotope)
         self.expected_image_output = torch.FloatTensor([[
-            [
+            [[
                 [0.25, 1],
-                [0, 0]
-            ],
-            [
+                [0, 0.5]
+            ]],
+            [[
                 [0.5, -1],
                 [0, 0]
-            ],
-            [
+            ]],
+            [[
                 [0.25, 0],
                 [0, 0]
-            ]
+            ]]
         ]])
 
-        transformed_relu = TransformedReLU()
+        transformed_relu = TransformedReLU(torch.Size([1, 4]))
         self.vector_output = transformed_relu.forward(vector_zonotope)
         self.expected_vector_output = torch.FloatTensor([
             [
@@ -253,6 +258,24 @@ class TransformedReluTester(unittest.TestCase):
                 [0.25, 0, 0, 0]
             ]
         ])
+
+        lambda_vector_input = [0, 0, 1, 1]
+        lambda_vector_error_weight = [1, 1, 0, 2]
+        lambda_vector_zonotope = torch.FloatTensor([[lambda_vector_input, lambda_vector_error_weight]])
+        transformed_relu = TransformedReLU(torch.Size([1, 3]))
+        transformed_relu.lambda_.data = torch.FloatTensor([[0, 1, 0.5, 1/3]])
+        transformed_relu.is_lambda_set = True
+        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope)
+        self.expected_lambda_vector_output = torch.FloatTensor([
+            [
+                [0.5, 0.5, 1, 1],
+                [0, 1, 0, 2/3],
+                [0.5, 0, 0, 0],
+                [0, 0.25, 0, 0],
+                [0, 0, 0, 1/3]
+            ]
+        ])
+
 
     def test_size_image(self):
         assert self.expected_image_output.size() == self.image_output.size(), \
@@ -278,6 +301,20 @@ class TransformedReluTester(unittest.TestCase):
         assert self.expected_vector_output[:, 1:].equal(self.vector_output[:, 1:]), \
             "Error for error weights (for vector input)"
 
+    def test_bias_lambda_vector(self):
+        exp = self.expected_lambda_vector_output[:, 0]
+        out = self.lambda_vector_output[:, 0]
+        diff = torch.sum(exp - out).item()
+        assert diff < 1e-4, \
+            "Error for bias term (for specific lambda vector input)"
+
+    def test_error_lambda_vector(self):
+        exp = self.expected_lambda_vector_output[:, 1:]
+        out = self.lambda_vector_output[:, 1:]
+        diff = torch.sum(exp - out).item()
+        assert diff < 1e-4, \
+            "Error for error weights (for specific lambda vector input)"
+
 
 class TransformedNetworkTester(unittest.TestCase):
     def setUp(self):
@@ -285,11 +322,11 @@ class TransformedNetworkTester(unittest.TestCase):
         self.conv_network = Conv('cpu', 28, [(32, 4, 2, 1)], [100, 10], 10).to('cpu')
 
     def test_no_error_transformation_fc(self):
-        TransformedNetwork(self.fc_network, 0.01)
+        TransformedNetwork(self.fc_network, 0.01, 28)
         assert True
 
     def test_no_error_transformation_fc(self):
-        TransformedNetwork(self.conv_network, 0.01)
+        TransformedNetwork(self.conv_network, 0.01, 28)
         assert True
 
 
