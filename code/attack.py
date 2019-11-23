@@ -104,13 +104,13 @@ def main():
     if success:
         print("Unable to generate an adversarial example with the given parameters")
     else:
-        print("Succesfully generated an adversarial example")
+        print("Successfully generated an adversarial example")
 
 
     successMsg = 'success' if success else 'failure'
     folder, filename = '/'.join(args.spec.split('/')[:-1]), args.spec.split('/')[-1]
     newFilename = folder + '/perturbed_%s_%s' % (successMsg, args.eps) + filename
-    print("Saving perturbed image to file %s" % newFilename)
+    #print("Saving perturbed image to file %s" % newFilename)
 
     perturbedInput = perturbedInput.view(-1)
     with open(newFilename, 'w') as f:

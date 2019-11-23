@@ -1,9 +1,22 @@
+import argparse
+import os
+
 import numpy as np
 import math
 from tensorflow.keras.datasets import mnist
 
+parser = argparse.ArgumentParser(description="generate data for the 10 neural networks we have")
+parser.add_argument("--nbexamples", required=True, help="number of examples to generate per neural network")
+
+args = parser.parse_args()
+
 # load mnist dataset with 60k mnist examples
 (X_train, y_train),(X_test, y_test) = mnist.load_data()
+
+number_total_examples = 10*int(args.nbexamples)
+
+X_train = X_train[:number_total_examples]
+y_train = y_train[:number_total_examples]
 
 # flatten X_train
 X_train_flattened = np.zeros((len(X_train), 28*28))
