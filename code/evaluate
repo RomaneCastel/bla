@@ -22,7 +22,7 @@ do
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
-				attack=$(python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
+				attack=$(python3 attack.py --net ${net} --spec ../$1/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
 				if [[ "$attack" == *"Successfully"* ]]
 				then
 					verified_adversarial=$((verified_adversarial+1))
@@ -33,7 +33,7 @@ do
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
-				attack=$(python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
+				attack=$(python3 attack.py --net ${net} --spec ../$1/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
 				if [[ "Successfully" == *"$attack"* ]]
 				then
 					notverified_adversarial=$((notverified_adversarial+1))
