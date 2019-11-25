@@ -77,7 +77,7 @@ def main():
     parser.add_argument('--k', type=int, required=True, help='Number of PGD iterations.')
     parser.add_argument('--eps', type=float, required=True, help='Maximum allowed perturbation from input.')
     parser.add_argument('--eps_step', type=float, required=True, help='Size of a perturbation step.')
-
+    parser.add_argument('--saveFile', type=bool, required=False, default=False, help='Save the file at the end')
 
 
     args = parser.parse_args()
@@ -106,17 +106,17 @@ def main():
     else:
         print("Unable to generate an adversarial example with the given parameters")
 
+    if args.saveFile:
+        successMsg = 'success' if success else 'failure'
+        folder, filename = '/'.join(args.spec.split('/')[:-1]), args.spec.split('/')[-1]
+        newFilename = folder + '/perturbed_%s_%s' % (successMsg, args.eps) + filename
+        #print("Saving perturbed image to file %s" % newFilename)
 
-    successMsg = 'success' if success else 'failure'
-    folder, filename = '/'.join(args.spec.split('/')[:-1]), args.spec.split('/')[-1]
-    newFilename = folder + '/perturbed_%s_%s' % (successMsg, args.eps) + filename
-    #print("Saving perturbed image to file %s" % newFilename)
-
-    perturbedInput = perturbedInput.view(-1)
-    with open(newFilename, 'w') as f:
-        f.write('%d\n' % true_label)
-        for i in range(perturbedInput.shape[0]):
-            f.write('%f\n' % perturbedInput[i].item())
+        perturbedInput = perturbedInput.view(-1)
+        with open(newFilename, 'w') as f:
+            f.write('%d\n' % true_label)
+            for i in range(perturbedInput.shape[0]):
+                f.write('%f\n' % perturbedInput[i].item())
 
 
 
