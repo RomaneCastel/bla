@@ -34,7 +34,7 @@ for img in range(len(X_train)):
 		with open("../dataset/"+folders[folder]+"/img"+str(math.floor(image/10))+"_{0:.5f}".format(epsilon)+".txt", 'w+') as file:
 			file.write(str(y_train[i])+'\n'+a)
 	image += 1
-	epsilon += (0.2 - 0.005) / (args.nbexamples - 1)
+	epsilon += (0.2 - 0.005) / (int(args.nbexamples) - 1)
 	if epsilon > 0.2:
 		epsilon = 0.005
 	folder += 1
