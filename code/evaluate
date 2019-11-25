@@ -2,6 +2,8 @@
 
 k=${2:-50}
 eps_step=${3:-0.01}
+slow=${4:-0}
+it=${5:-100}
 
 verified_adversarial=0
 notverified_adversarial=0
@@ -17,8 +19,8 @@ do
 		then
 			:
 		else
-			echo "python3 verifier.py --net ${net} --spec ../$1/${net}/${spec}"
-			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec})
+			echo "python3 verifier.py --net ${net} --spec ../$1/${net}/${spec} --slow $slow --it $it"
+			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec} --slow $slow --it $it)
 			if [ "$out" == "verified" ]
 			then
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)

@@ -18,12 +18,15 @@ VERBOSE = True
 MODE = "NO DEBUG"
 
 
-def analyze(net, inputs, eps, true_label):
+def analyze(net, inputs, eps, true_label, slow, it):
     beginning = time.time()
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
     parameters = list(transformed_net.get_params())
     optimizer = optim.SGD(transformed_net.parameters(), lr=0.001, momentum=0.9)
-    for i in range(time.time()-beginning < 110):
+
+    shouldContinue = True
+    i = 0
+    while shouldContinue:
         torch.autograd.set_detect_anomaly(True)
         output_zonotope = transformed_net.forward(inputs)
         upper, lower = upper_lower(output_zonotope)
@@ -51,6 +54,13 @@ def analyze(net, inputs, eps, true_label):
 
             print("Failed: " + str((upper_bound - lower_bound).item()))
             print(transformed_net.get_mean_lambda_values())
+
+        if slow:
+            shouldContinue =  (time.time() - beginning < 110)
+        else:
+            i += 1
+            shouldContinue = (i < it)
+
     return 0
 
 
@@ -62,7 +72,12 @@ def main():
                         required=True,
                         help='Neural network to verify.')
     parser.add_argument('--spec', type=str, required=True, help='Test case to verify.')
+    parser.add_argument('--slow', type=int, required=False, default=0, help='Run for almost 2 minutes.')
+    parser.add_argument('--it', type=int, required=False, default=100, help='Number of iterations (if not choosing --slow).')
     args = parser.parse_args()
+
+    print(args.slow)
+    print(args.it)
 
     with open(args.spec, 'r') as f:
         lines = [line[:-1] for line in f.readlines()]
@@ -77,7 +92,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label):
+    if analyze(net, inputs, eps, true_label, args.slow, args.it):
         print('verified')
     else:
         print('not verified')

@@ -96,9 +96,9 @@ def main():
 
     inputs = torch.FloatTensor(pixel_values).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     perturbedInput = pgd_untargeted(net, inputs, true_label, args.k, args.eps, args.eps_step)
-    print("Perturbed image is equal: %d" % torch.equal(inputs, perturbedInput))
 
     if args.visualise:
+        print("Perturbed image is equal: %d" % torch.equal(inputs, perturbedInput))
         differences = abs(inputs - perturbedInput).view(INPUT_SIZE, INPUT_SIZE)
         print(differences.max())
         visualiseImage(differences, "differences.png")
