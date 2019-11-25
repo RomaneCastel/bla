@@ -1,27 +1,49 @@
 #!/bin/bash
 
+verified_adversarial=0
+notverified_adversarial=0
+verified_noadversarial=0
+notverified_noadversarial=0
 for net in fc1 fc2 fc3 fc4 fc5 
 do
 	echo Evaluating network ${net}...
-	for spec in `ls ../test_cases/${net}`
+	for spec in `ls ../$1/${net}`
 	do	
-		echo $spec
 		perturbed="perturbed"
-		if [[ "$spec" == *"$perturbed"* ]]
+		if [[ "$spec" == *"$perturbed"* ]] || [[ "$spec" == *"details"* ]]
 		then
 			:
 		else
-			echo "in"
-			out=$(python3 verifier.py --net ${net} --spec ../test_cases/${net}/${spec})
+			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec})
 			echo "$out"
-			verified="verified"
-			if [ "$out" == "$verified" ] 
+			if [ "$out" == "verified" ] 
 			then	
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
-				python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01
+				attack=$(python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
+				if [[ "$attack" == *"Successfully"* ]]
+				then
+					verified_adversarial=$((verified_adversarial+1))
+				else
+					verified_noadversarial=$((verified_noadversarial+1))
+				fi	
+			else
+				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
+				root="0."
+				eps="${root}${decimals}"
+				attack=$(python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
+				if [[ "Successfully" == *"$attack"* ]]
+				then
+					notverified_adversarial=$((notverified_adversarial+1))
+				else
+					notverified_noadversarial=$((notverified_noadversarial+1))
+				fi
+					
 			fi
 		fi
 	done
 done
+echo "          adversarial_found          adversarial_notfound"
+	echo "verified  $verified_adversarial                    $verified_noadversarial"
+	echo "notverif  $notverified_adversarial                    $notverified_noadversarial"
