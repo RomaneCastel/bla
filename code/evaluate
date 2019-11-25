@@ -4,11 +4,11 @@ verified_adversarial=0
 notverified_adversarial=0
 verified_noadversarial=0
 notverified_noadversarial=0
-for net in fc1 fc2 fc3 fc4 fc5 
+for net in fc1 fc2 fc3 fc4 fc5
 do
 	echo Evaluating network ${net}...
 	for spec in `ls ../$1/${net}`
-	do	
+	do
 		perturbed="perturbed"
 		if [[ "$spec" == *"$perturbed"* ]] || [[ "$spec" == *"details"* ]]
 		then
@@ -17,8 +17,8 @@ do
 			echo "python3 verifier.py --net ${net} --spec ../$1/${net}/${spec}"
 			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec})
 			echo "$out"
-			if [ "$out" == "verified" ] 
-			then	
+			if [ "$out" == "verified" ]
+			then
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
@@ -28,7 +28,7 @@ do
 					verified_adversarial=$((verified_adversarial+1))
 				else
 					verified_noadversarial=$((verified_noadversarial+1))
-				fi	
+				fi
 			else
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
@@ -40,7 +40,7 @@ do
 				else
 					notverified_noadversarial=$((notverified_noadversarial+1))
 				fi
-					
+
 			fi
 		fi
 	done
