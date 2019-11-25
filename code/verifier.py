@@ -76,9 +76,6 @@ def main():
     parser.add_argument('--it', type=int, required=False, default=100, help='Number of iterations (if not choosing --slow).')
     args = parser.parse_args()
 
-    print(args.slow)
-    print(args.it)
-
     with open(args.spec, 'r') as f:
         lines = [line[:-1] for line in f.readlines()]
         true_label = int(lines[0])
