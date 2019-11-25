@@ -1,7 +1,8 @@
 import unittest
 import torch
 import torch.nn as nn
-from transformers import TransformedInput, TransformedNetwork, TransformedReLU, TransformedFlatten, TransformedNormalization, TransformedLinear, TransformedConv2D
+from transformers import TransformedInput, TransformedNetwork, TransformedReLU, TransformedFlatten, \
+    TransformedNormalization, TransformedLinear, TransformedConv2D, LayerTransformer, upper_lower
 from networks import Normalization, FullyConnected, Conv
 from torch.nn import Linear
 import numpy as np
@@ -328,6 +329,55 @@ class TransformedNetworkTester(unittest.TestCase):
     def test_no_error_transformation_fc(self):
         TransformedNetwork(self.conv_network, 0.01, 28)
         assert True
+
+
+class ToyNetworkTester(unittest.TestCase):
+    def setUp(self):
+        layers = [nn.Linear(2, 2), nn.ReLU(), nn.Linear(2, 2)]
+        layers[0].weight.data = torch.FloatTensor([[1, 1], [1, -1]])
+        layers[0].bias.data = torch.FloatTensor([0, 0])
+        layers[2].weight.data = torch.FloatTensor([[1, 1], [1, -1]])
+        layers[2].bias.data = torch.FloatTensor([0, 0])
+        self.net = nn.Sequential(*layers)
+        self.transformed_net = nn.Sequential(*[LayerTransformer()(layer, []) for layer in layers])
+        self.input = torch.FloatTensor([
+            [
+                [0.3, 0.4],
+                [0.3, 0],
+                [0, 0.3]
+            ]
+        ])
+        self.output = self.transformed_net(self.input)
+        self.expected_output = torch.FloatTensor([
+            [
+                [0.7+0.25*0.5/1.2, 0.7-0.25*0.5/1.2],
+                [0.425, 0.175],
+                [0.175, 0.425],
+                [0.35/2.4, -0.35/2.4]
+            ]
+        ])
+
+    def test_right_bias_output(self):
+        exp = self.expected_output[:, 0]
+        out = self.output[:, 0]
+        diff = torch.sum(exp - out).item()
+        assert diff < 1e-4, \
+            "Wrong bias output"
+
+    def test_right_error_weight_output(self):
+        exp = self.expected_output[:, 1:]
+        out = self.output[:, 1:]
+        diff = torch.sum(exp - out).item()
+        assert diff < 1e-4, \
+            "Wrong error weights output"
+
+    def test_is_verified(self):
+        # we want to show lower o1 >= upper o2
+        o1 = self.output[:, :, 0]
+        l1, _ = upper_lower(o1)
+        o2 = self.output[:, :, 1]
+        _, o2 = upper_lower(o2)
+        assert l1 > o2, "Should have certified"
 
 
 if __name__ == '__main__':
