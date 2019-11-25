@@ -18,6 +18,10 @@ number_total_examples = 10*int(args.nbexamples)
 X_train = X_train[:number_total_examples]
 y_train = y_train[:number_total_examples]
 
+# Shuffle X and Y in the same way
+p = np.random.permutation(len(X_train))
+X_train, y_train = X_train[p], y_train[p]
+
 # flatten X_train
 X_train_flattened = np.zeros((len(X_train), 28*28))
 for i in range(len(X_train)):
