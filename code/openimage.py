@@ -19,6 +19,12 @@ VERBOSE = True
 MODE = "NO DEBUG"
 
 
+def visualiseImage(imageTensor, name='image.png'):
+    plt.imshow(imageTensor.detach().numpy())
+    plt.savefig(name)
+    # plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser(description='See image')
     parser.add_argument('--spec', type=str, required=True, help='Test case to visualise.')
@@ -34,9 +40,7 @@ def main():
     inputs = torch.FloatTensor(pixel_values).view(INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     print("true_label: %d" % true_label)
     print("eps: %f" %  eps)
-    plt.imshow(inputs.numpy())
-    # plt.show()
-    plt.savefig("image.png")
+    visualiseImage(inputs)
 
 
 if __name__ == '__main__':

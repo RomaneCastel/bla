@@ -25,7 +25,7 @@ X_train, y_train = X_train[p], y_train[p]
 # flatten X_train
 X_train_flattened = np.zeros((len(X_train), 28*28))
 for j in range(len(X_train)):
-	X_train_flattened[j] = X_train[j].flatten()
+	X_train_flattened[j] = X_train[j].flatten() / 255
 
 epsilon = 0.005
 image = 0

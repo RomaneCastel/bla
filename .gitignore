@@ -6,3 +6,6 @@ __pycache__/
 perturbed_*.txt
 dataset/*/img*.txt
 image.png
+differences.png
+original.png
+perturbed.png

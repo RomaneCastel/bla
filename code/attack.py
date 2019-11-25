@@ -2,6 +2,7 @@ import argparse
 from common import loadNetwork
 import torch
 import torch.nn as nn
+from openimage import visualiseImage
 
 
 # Code taken from the solution of the 4th RIAI lab
@@ -78,6 +79,7 @@ def main():
     parser.add_argument('--eps', type=float, required=True, help='Maximum allowed perturbation from input.')
     parser.add_argument('--eps_step', type=float, required=True, help='Size of a perturbation step.')
     parser.add_argument('--saveFile', type=bool, required=False, default=False, help='Save the file at the end')
+    parser.add_argument('--visualise', type=bool, required=False, default=False, help='Save the perturbed image')
 
 
     args = parser.parse_args()
@@ -94,7 +96,14 @@ def main():
 
     inputs = torch.FloatTensor(pixel_values).view(1, 1, INPUT_SIZE, INPUT_SIZE).to(DEVICE)
     perturbedInput = pgd_untargeted(net, inputs, true_label, args.k, args.eps, args.eps_step)
+    print("Perturbed image is equal: %d" % torch.equal(inputs, perturbedInput))
 
+    if args.visualise:
+        differences = abs(inputs - perturbedInput).view(INPUT_SIZE, INPUT_SIZE)
+        print(differences.max())
+        visualiseImage(differences, "differences.png")
+        visualiseImage(inputs.view(INPUT_SIZE, INPUT_SIZE), "original.png")
+        visualiseImage(perturbedInput.view(INPUT_SIZE, INPUT_SIZE), "perturbed.png")
 
     outs = net(perturbedInput)
     pred_label = outs.max(dim=1)[1].item()
