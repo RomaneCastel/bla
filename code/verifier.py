@@ -5,6 +5,7 @@ from transformers import TransformedNetwork, upper_lower
 import torch.nn as nn
 from torch import optim
 from common import loadNetwork
+import time
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
@@ -18,10 +19,11 @@ MODE = "NO DEBUG"
 
 
 def analyze(net, inputs, eps, true_label):
+    beginning = time.time()
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
     parameters = list(transformed_net.get_params())
     optimizer = optim.SGD(transformed_net.parameters(), lr=0.001, momentum=0.9)
-    for i in range(100):
+    for i in range(time.time()-beginning < 110):
         torch.autograd.set_detect_anomaly(True)
         output_zonotope = transformed_net.forward(inputs)
         upper, lower = upper_lower(output_zonotope)

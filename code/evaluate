@@ -14,6 +14,7 @@ do
 		then
 			:
 		else
+			echo "python3 verifier.py --net ${net} --spec ../$1/${net}/${spec}"
 			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec})
 			echo "$out"
 			if [ "$out" == "verified" ] 
