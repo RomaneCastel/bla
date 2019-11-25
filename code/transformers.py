@@ -158,11 +158,10 @@ class TransformedReLU(nn.Module):
         #  if l >= 0, l = 1
         #  else l = u / (u-l)
         _lambda = (lower >= 0).type(torch.FloatTensor) \
-                       + (lower < 0).type(torch.FloatTensor) \
-                       * (upper > 0).type(torch.FloatTensor) \
+                       + (lower * upper < 0).type(torch.FloatTensor) \
                        * upper / (upper - lower)
         # set all nans to 1
-        _lambda[_lambda != _lambda] = 1
+        _lambda[_lambda != _lambda] = 0.5
         self.lambda_.data = _lambda
         self.is_lambda_set = True
 
