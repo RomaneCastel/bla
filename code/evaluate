@@ -34,7 +34,7 @@ do
 				root="0."
 				eps="${root}${decimals}"
 				attack=$(python3 attack.py --net ${net} --spec ../$1/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
-				if [[ "Successfully" == *"$attack"* ]]
+				if [[ "$attack" == *"Successfully"* ]]
 				then
 					notverified_adversarial=$((notverified_adversarial+1))
 				else
