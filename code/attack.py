@@ -102,9 +102,9 @@ def main():
     success = pred_label != true_label
 
     if success:
-        print("Unable to generate an adversarial example with the given parameters")
-    else:
         print("Successfully generated an adversarial example")
+    else:
+        print("Unable to generate an adversarial example with the given parameters")
 
 
     successMsg = 'success' if success else 'failure'
