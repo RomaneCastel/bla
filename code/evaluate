@@ -1,5 +1,10 @@
 #!/bin/bash
 
+k=${2:-50}
+eps_step=${3:-0.01}
+slow=${4:-0}
+it=${5:-100}
+
 verified_adversarial=0
 notverified_adversarial=0
 verified_noadversarial=0
@@ -14,16 +19,15 @@ do
 		then
 			:
 		else
-			echo "python3 verifier.py --net ${net} --spec ../$1/${net}/${spec}"
-			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec})
-			echo "$out"
+			echo "python3 verifier.py --net ${net} --spec ../$1/${net}/${spec} --slow $slow --it $it"
+			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec} --slow $slow --it $it)
 			if [ "$out" == "verified" ]
 			then
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
-				echo "python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01"
-				attack=$(python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
+				attack=$(python3 attack.py --net ${net} --spec ../$1/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
+				echo "$out - $attack"
 				if [[ "$attack" == *"Successfully"* ]]
 				then
 					verified_adversarial=$((verified_adversarial+1))
@@ -34,9 +38,9 @@ do
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
-				echo "python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01"
-				attack=$(python3 attack.py --net ${net} --spec ../test_cases/${net}/${spec} --k 50 --eps $eps --eps_step 0.01)
-				if [[ "Successfully" == *"$attack"* ]]
+				attack=$(python3 attack.py --net ${net} --spec ../$1/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
+				echo "$out - $attack"
+				if [[ "$attack" == *"Successfully"* ]]
 				then
 					notverified_adversarial=$((notverified_adversarial+1))
 				else

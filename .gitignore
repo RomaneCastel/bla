@@ -4,3 +4,8 @@ __pycache__/
 .mypy_cache/
 *.pyc
 perturbed_*.txt
+dataset/*/img*.txt
+image.png
+differences.png
+original.png
+perturbed.png
