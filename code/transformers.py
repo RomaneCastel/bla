@@ -101,7 +101,6 @@ class TransformedLinear(nn.Module):
         # input of size batch_size x (n_eps + 1) x in_features
         # output of size batch_size x (n_eps + 1) x out_features
         # bias receives full affine transform, error weights only the linear part
-        # TODO really handled ? error by error ?
         output = F.linear(x, self.layer.weight, None)  # no bias for the moment
         if self.layer.bias is not None:
             output[:, 0, :] += self.layer.bias
@@ -211,18 +210,9 @@ class TransformedReLU(nn.Module):
         if len(x.shape) == 3:
             final_x = torch.cat([transformed_x, torch.zeros([x.shape[0], n_new_error_weights, x.shape[2]])], dim=1)
         else:
-            final_x = torch.cat(
-                [transformed_x,
-                 torch.zeros(
-                     [x.shape[0],
-                      n_new_error_weights,
-                      x.shape[2],
-                      x.shape[3],
-                      x.shape[4]
-                     ]
-                 )
-                ],
-            dim=1)
+            # TODO take a time to execute, how to make it faster ?
+            final_x = torch.zeros(x.shape[0], x.shape[1] + n_new_error_weights, x.shape[2], x.shape[3], x.shape[4])
+            final_x[:, :x.shape[1]] = transformed_x
 
         # filling new error terms
         # when vector
@@ -233,14 +223,12 @@ class TransformedReLU(nn.Module):
                     final_x[:, i_error, i] = delta[:, i] / 2
                     i_error += 1
         # when image
-        # seems to be REALLY slow
-        # TODO How to fix it / make it faster
         else:
             i_error = n_old_error_weights
             for f in range(x.shape[2]):
                 for i in range(x.shape[3]):
                     for j in range(x.shape[4]):
-                        if has_new_error_term[0, f, i, j] == 1:
+                        if has_new_error_term[0, f, i, j].item():
                             final_x[0, i_error, f, i, j] = delta[0, f, i, j] / 2
                             i_error += 1
         return final_x
