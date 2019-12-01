@@ -12,7 +12,7 @@ At each layer, instead of dealing with a single image, it deals with several ima
  - one weight image per epsilon_i. The number of weight images can possibly increase by
  1 for each ReLU layer.
 Note that those images can be flatten.
-Therefore a zonotope will be represent as a tensor of size (1 + n_eps) x image height x image width 
+Therefore a zonotope will be represent as a tensor of size (1 + n_eps) x image height x image width
 
 Transforming a sequential network of several layers requires to be able to transform every
 layer. Also, the following relationship holds for zonotope transformation:
@@ -104,6 +104,8 @@ class TransformedLinear(nn.Module):
         output = F.linear(x, self.layer.weight, None)  # no bias for the moment
         if self.layer.bias is not None:
             output[:, 0, :] += self.layer.bias
+
+        print(output)
         return output
 
 
@@ -127,6 +129,7 @@ class TransformedConv2D(nn.Module):
             output[:, i, :, :, :] = self.layer.forward(x[:, i, :, :, :])
             output[:, i, :, :, :] -= self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
+        print(output)
         return output
 
 
@@ -141,7 +144,9 @@ class TransformedFlatten(nn.Module):
         # batch_size x 1+n_errors x n_features x h x w
         # output of shape
         # batch_size x 1+n_errors x (n_features * h * w)
-        return x.flatten(self.start_dim, self.end_dim)
+        final_x = x.flatten(self.start_dim, self.end_dim)
+        print(final_x)
+        return final_x
 
 
 class TransformedReLU(nn.Module):
@@ -231,6 +236,7 @@ class TransformedReLU(nn.Module):
                         if has_new_error_term[0, f, i, j].item():
                             final_x[0, i_error, f, i, j] = delta[0, f, i, j] / 2
                             i_error += 1
+        print(final_x)
         return final_x
 
     def clip_lambda(self):

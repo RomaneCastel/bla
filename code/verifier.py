@@ -43,7 +43,10 @@ def analyze(net, inputs, eps, true_label, slow, it):
             return 1
 
         # we want to minimize the max of upper bounds (mean used as max not really
-        # differentiable (same issue as L1 norm) and maximize the lower bound of
+        # differentiable (same issue as L1 norm, improving only one upper bound may
+        # come at the cost of worsening other upper bounds, and is potentially quite slow
+        # even in the very rare case that it works; using the mean ensure we try to
+        # reduce all upper bounds, avoiding that problem)) and maximize the lower bound of
         # the real class
         # Set the upper bound of the true label to 0 because we don't want to take it into
         # account when computing the loss. What we care about is the difference between
