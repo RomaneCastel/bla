@@ -45,12 +45,24 @@ def analyze(net, inputs, eps, true_label, slow, it):
         loss = torch.mean(upper) - lower_bound
         loss.backward()
         optimizer.step()
+
+        if mode == "DEBUG":
+            print("Before clipping")
+            for m in transformed_net.layers:
+                print(m)
+                try:
+                    print(m.lambda_.grad)
+                except:
+                    print('no weight')
+
         transformed_net.clip_lambdas()
 
         if MODE == "DEBUG":
+            print("After clipping")
             # few sanity checks
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()
+
 
             for m in transformed_net.layers:
                 print(m)
@@ -58,6 +70,8 @@ def analyze(net, inputs, eps, true_label, slow, it):
                     print(m.lambda_.grad)
                 except:
                     print('no weight')
+
+            print(loss)
 
             print("Failed: " + str((upper_bound - lower_bound).item()))
             print(transformed_net.get_mean_lambda_values())
