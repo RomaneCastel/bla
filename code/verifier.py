@@ -52,6 +52,13 @@ def analyze(net, inputs, eps, true_label, slow, it):
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()
 
+            for m in transformed_net.layers:
+                print(m)
+                try:
+                    print(m.lambda_.grad)
+                except:
+                    print('no weight')
+
             print("Failed: " + str((upper_bound - lower_bound).item()))
             print(transformed_net.get_mean_lambda_values())
 
