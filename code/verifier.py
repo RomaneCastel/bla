@@ -15,7 +15,8 @@ VERBOSE = True
 # Possible improvements:
 # 1) Use a more advanced optimizer than SGD, like Adam
 # 2) Optimize the number of iterations
-MODE = "DEBUG"
+MODE = "NO DEBUG"
+VERBOSE = False
 
 
 def analyze(net, inputs, eps, true_label, slow, it):
@@ -57,7 +58,7 @@ def analyze(net, inputs, eps, true_label, slow, it):
         loss.backward()
         optimizer.step()
 
-        if MODE == "DEBUG":
+        if MODE == "DEBUG" and VERBOSE:
             print("Before clipping")
             for m in transformed_net.layers:
                 print(m)
@@ -78,17 +79,17 @@ def analyze(net, inputs, eps, true_label, slow, it):
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()
 
-
-            for m in transformed_net.layers:
-                print(m)
-                try:
-                    print(m.lambda_.grad)
-                    nonzero_grads = (m.lambda_.grad != 0).type(torch.FloatTensor)
-                    num_nonzero_grads = int(torch.sum(nonzero_grads).item())
-                    print("Number of non zero gradient values: %d" % num_nonzero_grads)
-                    print("Their values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
-                except:
-                    print('no weight')
+            if VERBOSE:
+                for m in transformed_net.layers:
+                    print(m)
+                    try:
+                        print(m.lambda_.grad)
+                        nonzero_grads = (m.lambda_.grad != 0).type(torch.FloatTensor)
+                        num_nonzero_grads = int(torch.sum(nonzero_grads).item())
+                        print("Number of non zero gradient values: %d" % num_nonzero_grads)
+                        print("Their values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
+                    except:
+                        print('no weight')
 
             print(loss)
 
