@@ -1,5 +1,6 @@
 #!/bin/bash
 
+folder=${1:-"test_cases"}
 k=${2:-50}
 eps_step=${3:-0.01}
 slow=${4:-0}
@@ -12,21 +13,21 @@ notverified_noadversarial=0
 for net in fc1 fc2 fc3 fc4 fc5
 do
 	echo Evaluating network ${net}...
-	for spec in `ls ../$1/${net}`
+	for spec in `ls ../$folder/${net}`
 	do
 		perturbed="perturbed"
 		if [[ "$spec" == *"$perturbed"* ]] || [[ "$spec" == *"details"* ]]
 		then
 			:
 		else
-			echo "python3 verifier.py --net ${net} --spec ../$1/${net}/${spec} --slow $slow --it $it"
-			out=$(python3 verifier.py --net ${net} --spec ../$1/${net}/${spec} --slow $slow --it $it)
+			echo "python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it"
+			out=$(python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it)
 			if [ "$out" == "verified" ]
 			then
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
-				attack=$(python3 attack.py --net ${net} --spec ../$1/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
+				attack=$(python3 attack.py --net ${net} --spec ../$folder/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
 				echo "$out - $attack"
 				if [[ "$attack" == *"Successfully"* ]]
 				then
@@ -38,7 +39,7 @@ do
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
 				root="0."
 				eps="${root}${decimals}"
-				attack=$(python3 attack.py --net ${net} --spec ../$1/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
+				attack=$(python3 attack.py --net ${net} --spec ../$folder/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
 				echo "$out - $attack"
 				if [[ "$attack" == *"Successfully"* ]]
 				then
