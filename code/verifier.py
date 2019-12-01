@@ -46,7 +46,7 @@ def analyze(net, inputs, eps, true_label, slow, it):
         loss.backward()
         optimizer.step()
 
-        if mode == "DEBUG":
+        if MODE == "DEBUG":
             print("Before clipping")
             for m in transformed_net.layers:
                 print(m)
