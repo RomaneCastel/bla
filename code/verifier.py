@@ -66,6 +66,7 @@ def analyze(net, inputs, eps, true_label, slow, it):
                     nonzero_grads = (m.lambda_.grad != 0).type(torch.FloatTensor)
                     num_nonzero_grads = int(torch.sum(nonzero_grads).item())
                     print("Number of non zero gradient values: %d" % num_nonzero_grads)
+                    print("Their values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
                 except:
                     print('no weight')
 
@@ -85,6 +86,7 @@ def analyze(net, inputs, eps, true_label, slow, it):
                     nonzero_grads = (m.lambda_.grad != 0).type(torch.FloatTensor)
                     num_nonzero_grads = int(torch.sum(nonzero_grads).item())
                     print("Number of non zero gradient values: %d" % num_nonzero_grads)
+                    print("Their values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
                 except:
                     print('no weight')
 
