@@ -219,7 +219,8 @@ class TransformedReLU(nn.Module):
         has_new_error_term = (lower * upper < 0).type(torch.FloatTensor)
 
         n_new_error_weights = int(torch.sum(has_new_error_term).item())
-        print("Adding %d new error terms" % n_new_error_weights)
+        if VERBOSE_LOGGING:
+            print("Adding %d new error terms" % n_new_error_weights)
         # create new tensor that is able to host all the new error terms
         if len(x.shape) == 3:
             final_x = torch.cat([transformed_x, torch.zeros([x.shape[0], n_new_error_weights, x.shape[2]])], dim=1)
