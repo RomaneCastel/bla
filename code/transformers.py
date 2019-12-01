@@ -105,8 +105,8 @@ class TransformedLinear(nn.Module):
         if self.layer.bias is not None:
             output[:, 0, :] += self.layer.bias
 
-        print(output)
         print("Linear output: ")
+        print(output)
         return output
 
 
@@ -130,8 +130,8 @@ class TransformedConv2D(nn.Module):
             output[:, i, :, :, :] = self.layer.forward(x[:, i, :, :, :])
             output[:, i, :, :, :] -= self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
-        print(output)
         print("Conv 2D output: ")
+        print(output)
         return output
 
 
