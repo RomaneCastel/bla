@@ -15,7 +15,7 @@ VERBOSE = True
 # Possible improvements:
 # 1) Use a more advanced optimizer than SGD, like Adam
 # 2) Optimize the number of iterations
-MODE = "NO DEBUG"
+MODE = "DEBUG"
 
 
 def analyze(net, inputs, eps, true_label, slow, it):
