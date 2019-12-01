@@ -34,7 +34,10 @@ def analyze(net, inputs, eps, true_label, slow, it):
         # max upper bound for all the other labels, because this means the true label value
         # will always be bigger than the other labels, and so the classification will be correct
         lower_bound = lower[0, true_label]
-        upper[0, true_label] = -1000000  # Ignore upper bound of the true label
+
+        # If the lower bound of the true label is higher than the upper bound of
+        # any other output, we have verified the input!
+        upper[0, true_label] = -float('inf')  # Ignore upper bound of the true label
         upper_bound = torch.max(upper)
         if upper_bound <= lower_bound:
             return 1
@@ -42,6 +45,11 @@ def analyze(net, inputs, eps, true_label, slow, it):
         # we want to minimize the max of upper bounds (mean used as max not really
         # differentiable (same issue as L1 norm) and maximize the lower bound of
         # the real class
+        # Set the upper bound of the true label to 0 because we don't want to take it into
+        # account when computing the loss. What we care about is the difference between
+        # the true label lower bound and the upper bound of the other labels. We don't care
+        # about the upper bound of the true label (because it doesn't matter for verification)
+        upper[0, true_label] = 0
         loss = torch.mean(upper) - lower_bound
         loss.backward()
         optimizer.step()
