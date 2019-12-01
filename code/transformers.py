@@ -106,6 +106,7 @@ class TransformedLinear(nn.Module):
             output[:, 0, :] += self.layer.bias
 
         print(output)
+        print("Linear output: ")
         return output
 
 
@@ -130,6 +131,7 @@ class TransformedConv2D(nn.Module):
             output[:, i, :, :, :] -= self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
         print(output)
+        print("Conv 2D output: ")
         return output
 
 
@@ -145,6 +147,7 @@ class TransformedFlatten(nn.Module):
         # output of shape
         # batch_size x 1+n_errors x (n_features * h * w)
         final_x = x.flatten(self.start_dim, self.end_dim)
+        print("Flatten output: ")
         print(final_x)
         return final_x
 
@@ -236,6 +239,7 @@ class TransformedReLU(nn.Module):
                         if has_new_error_term[0, f, i, j].item():
                             final_x[0, i_error, f, i, j] = delta[0, f, i, j] / 2
                             i_error += 1
+        print("ReLU output: ")
         print(final_x)
         return final_x
 
