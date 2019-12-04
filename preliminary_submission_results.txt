@@ -1,0 +1,26 @@
+net,test case,ground truth,your output,your runtime,your point
+fc1,img0_0.05872.txt,not verified,not verified,15.742,0
+fc1,anonymous,verified,verified,0.651,1
+fc2,img0_0.05697.txt,not verified,not verified,19.206,0
+fc2,anonymous,verified,verified,0.683,1
+fc3,img0_0.01305.txt,not verified,not verified,11.956,0
+fc3,anonymous,verified,verified,0.754,1
+fc4,img1_0.13746.txt,verified,verified,3.973,1
+fc4,anonymous,verified,verified,2.229,1
+fc5,img3_0.05609.txt,verified,not verified,38.448,0
+fc5,anonymous,not verified,not verified,62.274,0
+conv1,anonymous,verified,verified,1.115,1
+conv1,img6_0.03833.txt,not verified,timeout (not verified),120,0
+conv1,anonymous,not verified,timeout (not verified),120,0
+conv2,anonymous,verified,verified,5.95,1
+conv2,img3_0.14256.txt,verified,timeout (not verified),120,0
+conv2,anonymous,not verified,timeout (not verified),120,0
+conv3,anonymous,verified,timeout (not verified),120,0
+conv3,anonymous,verified,timeout (not verified),120,0
+conv3,img8_0.07570.txt,verified,timeout (not verified),120,0
+conv4,anonymous,verified,timeout (not verified),120,0
+conv4,img6_0.19824.txt,not verified,timeout (not verified),120,0
+conv4,anonymous,not verified,timeout (not verified),120,0
+conv5,anonymous,verified,timeout (not verified),120,0
+conv5,anonymous,verified,timeout (not verified),120,0
+conv5,img8_0.18041.txt,verified,timeout (not verified),120,0
