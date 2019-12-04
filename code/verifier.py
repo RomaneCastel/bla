@@ -11,6 +11,8 @@ DEVICE = 'cpu'
 INPUT_SIZE = 28
 VERBOSE = True
 
+torch.set_num_threads(1)
+
 # TODO figure out why any image is always certified...
 # Possible improvements:
 # 1) Use a more advanced optimizer than SGD, like Adam
@@ -23,7 +25,8 @@ def analyze(net, inputs, eps, true_label, slow, it):
     beginning = time.time()
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
     parameters = list(transformed_net.get_params())
-    optimizer = optim.SGD(transformed_net.parameters(), lr=0.001, momentum=0.9)
+    #optimizer = optim.SGD(transformed_net.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.Adam(transformed_net.parameters())
 
     shouldContinue = True
     i = 0

@@ -42,9 +42,10 @@ class TransformedInput(nn.Module):
 
     def forward(self, x):
         # creates all the height x width error matrices/vectors
-        # x is of size batch_size x n_features x width x height
-        # output is of size batch_size x (1 + h x w x n_features)
-        #                          x n_features x width x height
+        # x is of size batch_size x n_channels x width x height
+        # output is of size
+        # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
+        # n_channels = 1 is 1 at the be
         zonotope = torch.zeros(
             [x.shape[0],
              1+x.shape[1]*x.shape[2]*x.shape[3],
@@ -102,6 +103,7 @@ class TransformedLinear(nn.Module):
         # input of size batch_size x (n_eps + 1) x in_features
         # output of size batch_size x (n_eps + 1) x out_features
         # bias receives full affine transform, error weights only the linear part
+        # x: batch_size x (1 + h x w x n_channels) x n_channels x (width x height)
         output = F.linear(x, self.layer.weight, None)  # no bias for the moment
         if self.layer.bias is not None:
             output[:, 0, :] += self.layer.bias
@@ -122,6 +124,7 @@ class TransformedConv2D(nn.Module):
         # batch_size x 1+n_errors x in_features x h x w
         # output of shape
         # batch_size x 1+n_errors x out_features x h' x w'
+        # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
         in_features = self.layer.weight.shape[1]
         shape_output = self.layer.forward(torch.zeros([x.shape[2], in_features, x.shape[3], x.shape[4]])).shape
         out_features = shape_output[1]
@@ -149,6 +152,7 @@ class TransformedFlatten(nn.Module):
         # batch_size x 1+n_errors x n_features x h x w
         # output of shape
         # batch_size x 1+n_errors x (n_features * h * w)
+        # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
         final_x = x.flatten(self.start_dim, self.end_dim)
         if VERBOSE_LOGGING:
             print("Flatten output: ")
@@ -177,6 +181,8 @@ class TransformedReLU(nn.Module):
         self.is_lambda_set = True
 
     def forward(self, x):
+        # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
+        # or x: batch_size x (1 + h x w x n_channels) x n_channels x (width x height)
         # computes minimum and maximum boundaries for every input value
         # upper and lower bound are tensor of size batch_size x n_features x ((h x w) || vector_size)
         # creates the n_features x batch_size x vector_size lambda values
