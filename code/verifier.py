@@ -16,6 +16,7 @@ VERBOSE = True
 # 1) Use a more advanced optimizer than SGD, like Adam
 # 2) Optimize the number of iterations
 MODE = "NO DEBUG"
+VERBOSE = False
 
 
 def analyze(net, inputs, eps, true_label, slow, it):
@@ -34,23 +35,63 @@ def analyze(net, inputs, eps, true_label, slow, it):
         # max upper bound for all the other labels, because this means the true label value
         # will always be bigger than the other labels, and so the classification will be correct
         lower_bound = lower[0, true_label]
-        upper[0, true_label] = -1000000  # Ignore upper bound of the true label
+
+        # If the lower bound of the true label is higher than the upper bound of
+        # any other output, we have verified the input!
+        upper[0, true_label] = -float('inf')  # Ignore upper bound of the true label
         upper_bound = torch.max(upper)
         if upper_bound <= lower_bound:
             return 1
 
         # we want to minimize the max of upper bounds (mean used as max not really
-        # differentiable (same issue as L1 norm) and maximize the lower bound of
+        # differentiable (same issue as L1 norm, improving only one upper bound may
+        # come at the cost of worsening other upper bounds, and is potentially quite slow
+        # even in the very rare case that it works; using the mean ensure we try to
+        # reduce all upper bounds, avoiding that problem)) and maximize the lower bound of
         # the real class
+        # Set the upper bound of the true label to 0 because we don't want to take it into
+        # account when computing the loss. What we care about is the difference between
+        # the true label lower bound and the upper bound of the other labels. We don't care
+        # about the upper bound of the true label (because it doesn't matter for verification)
+        upper[0, true_label] = 0
         loss = torch.mean(upper) - lower_bound
         loss.backward()
         optimizer.step()
+
+        if MODE == "DEBUG" and VERBOSE:
+            print("Before clipping")
+            for m in transformed_net.layers:
+                print(m)
+                try:
+                    print(m.lambda_.grad)
+                    nonzero_grads = (m.lambda_.grad != 0).type(torch.FloatTensor)
+                    num_nonzero_grads = int(torch.sum(nonzero_grads).item())
+                    print("Number of non zero gradient values: %d" % num_nonzero_grads)
+                    print("Their values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
+                except:
+                    print('no weight')
+
         transformed_net.clip_lambdas()
 
         if MODE == "DEBUG":
+            print("After clipping")
             # few sanity checks
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()
+
+            if VERBOSE:
+                for m in transformed_net.layers:
+                    print(m)
+                    try:
+                        print(m.lambda_.grad)
+                        nonzero_grads = (m.lambda_.grad != 0).type(torch.FloatTensor)
+                        num_nonzero_grads = int(torch.sum(nonzero_grads).item())
+                        print("Number of non zero gradient values: %d" % num_nonzero_grads)
+                        print("Their values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
+                    except:
+                        print('no weight')
+
+            print(loss)
 
             print("Failed: " + str((upper_bound - lower_bound).item()))
             print(transformed_net.get_mean_lambda_values())

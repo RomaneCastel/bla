@@ -1,18 +1,15 @@
 #!/bin/bash
 
 folder=${1:-"test_cases"}
-k=${2:-50}
-eps_step=${3:-0.01}
-slow=${4:-0}
-it=${5:-100}
+slow=${2:-0}
+it=${3:-100}
 
-for net in fc1 fc2 fc3 fc4 fc5
+for net in fc1 fc2 fc3 fc4 fc5 conv1 conv2 conv3 conv4 conv5
 do
 	echo Evaluating network ${net}...
 	for spec in `ls ../$folder/${net}`
 	do
-		perturbed="perturbed"
-		if [[ "$spec" == *"$perturbed"* ]] || [[ "$spec" == *"details"* ]]
+		if [[ "$spec" == *"perturbed"* ]] || [[ "$spec" == *"details"* ]]
 		then
 			:
 		else
