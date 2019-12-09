@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
 
-
 """
 The goal is to transform a network into zonotope verifier network.
 
@@ -46,7 +45,7 @@ def new_error_terms(x, condition, receiver, start_index):
     if len(x.shape) == 2:
         for i in range(x.shape[1]):
             if condition[0, i].item():
-                receiver[:, i_error, i] = x[:, i] / 2
+                receiver[:, i_error, i] = x[:, i]
                 i_error += 1
     # when image
     else:
@@ -54,7 +53,7 @@ def new_error_terms(x, condition, receiver, start_index):
             for i in range(x.shape[2]):
                 for j in range(x.shape[3]):
                     if condition[0, f, i, j].item():
-                        receiver[0, i_error, f, i, j] = x[0, f, i, j] / 2
+                        receiver[0, i_error, f, i, j] = x[0, f, i, j]
                         i_error += 1
     return i_error
 
@@ -71,35 +70,16 @@ class TransformedInput(nn.Module):
         #                          x n_features x width x height
         zonotope = torch.zeros(
             [x.shape[0],
-             1+x.shape[1]*x.shape[2]*x.shape[3],
+             1 + x.shape[1] * x.shape[2] * x.shape[3],
              x.shape[1],
              x.shape[2],
              x.shape[3]
-            ],
+             ],
             dtype=x.dtype)
 
-        for i_batch in range(x.shape[0]):
-            for f in range(x.shape[1]):
-                i_error = 1
-                for i_h in range(x.shape[2]):
-                    for i_w in range(x.shape[3]):
-                        pixel_value = x[i_batch, f, i_h, i_w]
-                        error_term = self.eps
-                        # modifies them if pixel_value is out of [eps, 1-eps]
-                        if pixel_value < error_term:
-                            new_pixel_value = (pixel_value + error_term) / 2.
-                            new_error_term = (error_term + pixel_value) / 2.
-                        elif pixel_value > 1 - error_term:
-                            new_pixel_value = (pixel_value + 1 - error_term) / 2.
-                            new_error_term = (1 - pixel_value + error_term) / 2.
-                        else:
-                            new_error_term = error_term
-                            new_pixel_value = pixel_value
-                        # add bias value
-                        zonotope[i_batch, 0, f, i_h, i_w] = new_pixel_value
-                        # add error value
-                        zonotope[i_batch, i_error, f, i_h, i_w] = new_error_term
-                        i_error += 1
+        zonotope[0, 0] = x + nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
+        error_terms = self.eps - nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
+        new_error_terms(error_terms, error_terms >= 0, zonotope, 1)
 
         return zonotope
 
@@ -182,8 +162,8 @@ class TransformedReLU(nn.Module):
         #  if l >= 0, l = 1
         #  else l = u / (u-l)
         _lambda = (lower >= 0).type(torch.FloatTensor) \
-                       + (lower * upper < 0).type(torch.FloatTensor) \
-                       * upper / (upper - lower)
+                  + (lower * upper < 0).type(torch.FloatTensor) \
+                  * upper / (upper - lower)
         # set all nans to 1
         _lambda[_lambda != _lambda] = 0.5
         self.lambda_.data = _lambda
@@ -217,14 +197,14 @@ class TransformedReLU(nn.Module):
         # for negative case, we 0 is the new bias
         # for positive case, we don't change anything
         transformed_x[:, 0] = (delta / 2 + self.lambda_ * x[:, 0]) * (lower * upper < 0).type(torch.FloatTensor) \
-            + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
+                              + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
 
         # for crossing border cases, we multiply by lambda error weights
         # for positive cases, we don't change anything
         # for negative cases, it is 0
         # modifying already existing error weights
         transformed_x[:, 1:] = x[:, 1:] * self.lambda_.unsqueeze(1) * (lower * upper < 0).type(torch.FloatTensor) \
-            + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
+                               + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
 
         # adding new error weights
         # correct as batch_size is equal to 1 here
@@ -240,7 +220,7 @@ class TransformedReLU(nn.Module):
             final_x[:, :x.shape[1]] = transformed_x
 
         # filling new error terms
-        new_error_terms(delta, has_new_error_term, final_x, n_old_error_weights)
+        new_error_terms(delta/2, has_new_error_term, final_x, n_old_error_weights)
         return final_x
 
     def clip_lambda(self):
