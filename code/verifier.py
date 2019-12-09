@@ -18,11 +18,15 @@ VERBOSE = True
 MODE = "NO DEBUG"
 
 
-def analyze(net, inputs, eps, true_label, slow, it):
+def analyze(net, inputs, eps, true_label, slow, it, learningRate=0.001, useAdam=False):
     beginning = time.time()
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
     parameters = list(transformed_net.get_params())
-    optimizer = optim.SGD(transformed_net.parameters(), lr=0.001, momentum=0.9)
+
+    if useAdam:
+        optimizer = optim.Adam(transformed_net.parameters(), lr=learningRate)
+    else:
+        optimizer = optim.SGD(transformed_net.parameters(), lr=learningRate, momentum=0.9)
 
     shouldContinue = True
     i = 0
@@ -74,6 +78,8 @@ def main():
     parser.add_argument('--spec', type=str, required=True, help='Test case to verify.')
     parser.add_argument('--slow', type=int, required=False, default=0, help='Run for almost 2 minutes.')
     parser.add_argument('--it', type=int, required=False, default=100, help='Number of iterations (if not choosing --slow).')
+    parser.add_argument('--lr', type=float, required=False, default=0.001, help='Learning rate.')
+    parser.add_argument('--useAdam', type=int, required=False, default=0, help='Use Adam')
     args = parser.parse_args()
 
     with open(args.spec, 'r') as f:
@@ -89,7 +95,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label, args.slow, args.it):
+    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam):
         print('verified')
     else:
         print('not verified')
