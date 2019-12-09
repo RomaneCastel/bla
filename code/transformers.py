@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
 
-
 """
 The goal is to transform a network into zonotope verifier network.
 
@@ -12,7 +11,7 @@ At each layer, instead of dealing with a single image, it deals with several ima
  - one weight image per epsilon_i. The number of weight images can possibly increase by
  1 for each ReLU layer.
 Note that those images can be flatten.
-Therefore a zonotope will be represent as a tensor of size (1 + n_eps) x image height x image width 
+Therefore a zonotope will be represent as a tensor of size (1 + n_eps) x image height x image width
 
 Transforming a sequential network of several layers requires to be able to transform every
 layer. Also, the following relationship holds for zonotope transformation:
@@ -25,6 +24,8 @@ We therefore need to transform the following layers:
  - Flatten;
  - ReLU.
 """
+
+VERBOSE_LOGGING = False
 
 # utils function: compute lower and upper bounds of a zonotope
 def upper_lower(zonotope):
@@ -70,11 +71,11 @@ class TransformedInput(nn.Module):
         #                          x n_features x width x height
         zonotope = torch.zeros(
             [x.shape[0],
-             1+x.shape[1]*x.shape[2]*x.shape[3],
+             1 + x.shape[1] * x.shape[2] * x.shape[3],
              x.shape[1],
              x.shape[2],
              x.shape[3]
-            ],
+             ],
             dtype=x.dtype)
 
         zonotope[0, 0] = x + nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
@@ -109,6 +110,10 @@ class TransformedLinear(nn.Module):
         output = F.linear(x, self.layer.weight, None)  # no bias for the moment
         if self.layer.bias is not None:
             output[:, 0, :] += self.layer.bias
+
+        if VERBOSE_LOGGING:
+            print("Linear output: ")
+            print(output)
         return output
 
 
@@ -132,6 +137,9 @@ class TransformedConv2D(nn.Module):
             output[:, i, :, :, :] = self.layer.forward(x[:, i, :, :, :])
             output[:, i, :, :, :] -= self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
+        if VERBOSE_LOGGING:
+            print("Conv 2D output: ")
+            print(output)
         return output
 
 
@@ -146,7 +154,11 @@ class TransformedFlatten(nn.Module):
         # batch_size x 1+n_errors x n_features x h x w
         # output of shape
         # batch_size x 1+n_errors x (n_features * h * w)
-        return x.flatten(self.start_dim, self.end_dim)
+        final_x = x.flatten(self.start_dim, self.end_dim)
+        if VERBOSE_LOGGING:
+            print("Flatten output: ")
+            print(final_x)
+        return final_x
 
 
 class TransformedReLU(nn.Module):
@@ -162,8 +174,8 @@ class TransformedReLU(nn.Module):
         #  if l >= 0, l = 1
         #  else l = u / (u-l)
         _lambda = (lower >= 0).type(torch.FloatTensor) \
-                       + (lower * upper < 0).type(torch.FloatTensor) \
-                       * upper / (upper - lower)
+                  + (lower * upper < 0).type(torch.FloatTensor) \
+                  * upper / (upper - lower)
         # set all nans to 1
         _lambda[_lambda != _lambda] = 0.5
         self.lambda_.data = _lambda
@@ -197,20 +209,23 @@ class TransformedReLU(nn.Module):
         # for negative case, we 0 is the new bias
         # for positive case, we don't change anything
         transformed_x[:, 0] = (delta / 2 + self.lambda_ * x[:, 0]) * (lower * upper < 0).type(torch.FloatTensor) \
-            + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
+                              + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
 
         # for crossing border cases, we multiply by lambda error weights
         # for positive cases, we don't change anything
         # for negative cases, it is 0
         # modifying already existing error weights
         transformed_x[:, 1:] = x[:, 1:] * self.lambda_.unsqueeze(1) * (lower * upper < 0).type(torch.FloatTensor) \
-            + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
+                               + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
 
         # adding new error weights
         # correct as batch_size is equal to 1 here
         n_old_error_weights = x.shape[1]
         has_new_error_term = (lower * upper < 0).type(torch.FloatTensor)
+
         n_new_error_weights = int(torch.sum(has_new_error_term).item())
+        if VERBOSE_LOGGING:
+            print("Adding %d new error terms" % n_new_error_weights)
         # create new tensor that is able to host all the new error terms
         if len(x.shape) == 3:
             final_x = torch.cat([transformed_x, torch.zeros([x.shape[0], n_new_error_weights, x.shape[2]])], dim=1)
@@ -221,6 +236,7 @@ class TransformedReLU(nn.Module):
 
         # filling new error terms
         new_error_terms(delta/2, has_new_error_term, final_x, n_old_error_weights)
+
         return final_x
 
     def clip_lambda(self):
