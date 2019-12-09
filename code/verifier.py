@@ -13,10 +13,10 @@ VERBOSE = True
 
 # TODO figure out why any image is always certified...
 # Possible improvements:
-# 1) Use a more advanced optimizer than SGD, like Adam
-# 2) Optimize the number of iterations
+# 1) Optimize the number of iterations
 MODE = "NO DEBUG"
 
+torch.set_num_threads(4)
 
 def analyze(net, inputs, eps, true_label, slow, it, learningRate=0.001, useAdam=False):
     beginning = time.time()
