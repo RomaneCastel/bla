@@ -10,3 +10,4 @@ differences.png
 original.png
 perturbed.png
 timing.py
+*.log
