@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
 
-
 """
 The goal is to transform a network into zonotope verifier network.
 
@@ -35,6 +34,31 @@ def upper_lower(zonotope):
     return upper, lower
 
 
+# utils function that creates new error terms
+@torch.jit.script
+def new_error_terms(x, condition, receiver, start_index):
+    # type: (Tensor, Tensor, Tensor, int) -> int
+    # x is the ND tensor, condition a x-size boolean tensor (True if a new tensor has to be created for this value)
+    # receiver is the N+1D tensor in which the newly created sparse tensor will be stored
+    # start_index is the index from which the new tensors will be added
+    i_error = start_index
+    # when vector
+    if len(x.shape) == 2:
+        for i in range(x.shape[1]):
+            if condition[0, i].item():
+                receiver[:, i_error, i] = x[:, i]
+                i_error += 1
+    # when image
+    else:
+        for f in range(x.shape[1]):
+            for i in range(x.shape[2]):
+                for j in range(x.shape[3]):
+                    if condition[0, f, i, j].item():
+                        receiver[0, i_error, f, i, j] = x[0, f, i, j]
+                        i_error += 1
+    return i_error
+
+
 class TransformedInput(nn.Module):
     def __init__(self, eps):
         super().__init__()
@@ -48,35 +72,16 @@ class TransformedInput(nn.Module):
         # n_channels = 1 is 1 at the be
         zonotope = torch.zeros(
             [x.shape[0],
-             1+x.shape[1]*x.shape[2]*x.shape[3],
+             1 + x.shape[1] * x.shape[2] * x.shape[3],
              x.shape[1],
              x.shape[2],
              x.shape[3]
-            ],
+             ],
             dtype=x.dtype)
 
-        for i_batch in range(x.shape[0]):
-            for f in range(x.shape[1]):
-                i_error = 1
-                for i_h in range(x.shape[2]):
-                    for i_w in range(x.shape[3]):
-                        pixel_value = x[i_batch, f, i_h, i_w]
-                        error_term = self.eps
-                        # modifies them if pixel_value is out of [eps, 1-eps]
-                        if pixel_value < error_term:
-                            new_pixel_value = (pixel_value + error_term) / 2.
-                            new_error_term = (error_term + pixel_value) / 2.
-                        elif pixel_value > 1 - error_term:
-                            new_pixel_value = (pixel_value + 1 - error_term) / 2.
-                            new_error_term = (1 - pixel_value + error_term) / 2.
-                        else:
-                            new_error_term = error_term
-                            new_pixel_value = pixel_value
-                        # add bias value
-                        zonotope[i_batch, 0, f, i_h, i_w] = new_pixel_value
-                        # add error value
-                        zonotope[i_batch, i_error, f, i_h, i_w] = new_error_term
-                        i_error += 1
+        zonotope[0, 0] = x + nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
+        error_terms = self.eps - nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
+        new_error_terms(error_terms, error_terms >= 0, zonotope, 1)
 
         return zonotope
 
@@ -108,9 +113,6 @@ class TransformedLinear(nn.Module):
         if self.layer.bias is not None:
             output[:, 0, :] += self.layer.bias
 
-        if VERBOSE_LOGGING:
-            print("Linear output: ")
-            print(output)
         return output
 
 
@@ -135,9 +137,6 @@ class TransformedConv2D(nn.Module):
             output[:, i, :, :, :] = self.layer.forward(x[:, i, :, :, :])
             output[:, i, :, :, :] -= self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
-        if VERBOSE_LOGGING:
-            print("Conv 2D output: ")
-            print(output)
         return output
 
 
@@ -154,9 +153,7 @@ class TransformedFlatten(nn.Module):
         # batch_size x 1+n_errors x (n_features * h * w)
         # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
         final_x = x.flatten(self.start_dim, self.end_dim)
-        if VERBOSE_LOGGING:
-            print("Flatten output: ")
-            print(final_x)
+
         return final_x
 
 
@@ -173,8 +170,8 @@ class TransformedReLU(nn.Module):
         #  if l >= 0, l = 1
         #  else l = u / (u-l)
         _lambda = (lower >= 0).type(torch.FloatTensor) \
-                       + (lower * upper < 0).type(torch.FloatTensor) \
-                       * upper / (upper - lower)
+                  + (lower * upper < 0).type(torch.FloatTensor) \
+                  * upper / (upper - lower)
         # set all nans to 1
         _lambda[_lambda != _lambda] = 0.5
         self.lambda_.data = _lambda
@@ -210,14 +207,14 @@ class TransformedReLU(nn.Module):
         # for negative case, we 0 is the new bias
         # for positive case, we don't change anything
         transformed_x[:, 0] = (delta / 2 + self.lambda_ * x[:, 0]) * (lower * upper < 0).type(torch.FloatTensor) \
-            + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
+                              + x[:, 0] * (lower >= 0).type(torch.FloatTensor)
 
         # for crossing border cases, we multiply by lambda error weights
         # for positive cases, we don't change anything
         # for negative cases, it is 0
         # modifying already existing error weights
         transformed_x[:, 1:] = x[:, 1:] * self.lambda_.unsqueeze(1) * (lower * upper < 0).type(torch.FloatTensor) \
-            + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
+                               + x[:, 1:] * (lower >= 0).type(torch.FloatTensor)
 
         # adding new error weights
         # correct as batch_size is equal to 1 here
@@ -236,25 +233,8 @@ class TransformedReLU(nn.Module):
             final_x[:, :x.shape[1]] = transformed_x
 
         # filling new error terms
-        # when vector
-        if len(x.shape) == 3:
-            i_error = n_old_error_weights
-            for i in range(x.shape[2]):
-                if has_new_error_term[0, i] == 1:
-                    final_x[:, i_error, i] = delta[:, i] / 2
-                    i_error += 1
-        # when image
-        else:
-            i_error = n_old_error_weights
-            for f in range(x.shape[2]):
-                for i in range(x.shape[3]):
-                    for j in range(x.shape[4]):
-                        if has_new_error_term[0, f, i, j].item():
-                            final_x[0, i_error, f, i, j] = delta[0, f, i, j] / 2
-                            i_error += 1
-        if VERBOSE_LOGGING:
-            print("ReLU output: ")
-            print(final_x)
+        new_error_terms(delta/2, has_new_error_term, final_x, n_old_error_weights)
+
         return final_x
 
     def clip_lambda(self):

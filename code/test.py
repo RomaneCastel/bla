@@ -39,7 +39,10 @@ class TransformedInputTester(unittest.TestCase):
             "Error for bias term"
 
     def test_error(self):
-        assert self.expected_output[:, 1:].equal(self.output[:, 1:]), \
+        exp = self.expected_output[:, 1:]
+        out = self.output[:, 1:]
+        diff = torch.sum(exp - out).item()
+        assert diff < 1e-4, \
             "Error for error weights"
 
 
