@@ -34,6 +34,31 @@ def upper_lower(zonotope):
     return upper, lower
 
 
+# utils function that creates new error terms
+@torch.jit.script
+def new_error_terms(x, condition, receiver, start_index):
+    # type: (Tensor, Tensor, Tensor, int) -> int
+    # x is the ND tensor, condition a x-size boolean tensor (True if a new tensor has to be created for this value)
+    # receiver is the N+1D tensor in which the newly created sparse tensor will be stored
+    # start_index is the index from which the new tensors will be added
+    i_error = start_index
+    # when vector
+    if len(x.shape) == 2:
+        for i in range(x.shape[1]):
+            if condition[0, i].item():
+                receiver[:, i_error, i] = x[:, i] / 2
+                i_error += 1
+    # when image
+    else:
+        for f in range(x.shape[1]):
+            for i in range(x.shape[2]):
+                for j in range(x.shape[3]):
+                    if condition[0, f, i, j].item():
+                        receiver[0, i_error, f, i, j] = x[0, f, i, j] / 2
+                        i_error += 1
+    return i_error
+
+
 class TransformedInput(nn.Module):
     def __init__(self, eps):
         super().__init__()
@@ -215,22 +240,7 @@ class TransformedReLU(nn.Module):
             final_x[:, :x.shape[1]] = transformed_x
 
         # filling new error terms
-        # when vector
-        if len(x.shape) == 3:
-            i_error = n_old_error_weights
-            for i in range(x.shape[2]):
-                if has_new_error_term[0, i] == 1:
-                    final_x[:, i_error, i] = delta[:, i] / 2
-                    i_error += 1
-        # when image
-        else:
-            i_error = n_old_error_weights
-            for f in range(x.shape[2]):
-                for i in range(x.shape[3]):
-                    for j in range(x.shape[4]):
-                        if has_new_error_term[0, f, i, j].item():
-                            final_x[0, i_error, f, i, j] = delta[0, f, i, j] / 2
-                            i_error += 1
+        new_error_terms(delta, has_new_error_term, final_x, n_old_error_weights)
         return final_x
 
     def clip_lambda(self):
