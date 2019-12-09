@@ -1,0 +1,88 @@
+#!/bin/bash
+
+folder=${1:-"test_cases"}
+k=${2:-50}
+eps_step=${3:-0.01}
+slow=${4:-0}
+it=${5:-100}
+
+verified_adversarial=0
+notverified_adversarial=0
+verified_noadversarial=0
+notverified_noadversarial=0
+
+global_verified_adversarial=0
+global_notverified_adversarial=0
+global_verified_noadversarial=0
+global_notverified_noadversarial=0
+
+for lr in "0.01" "0.001" "0.0001"
+do
+	for useAdam in "0" "1"
+	do
+		echo "Learning rate: $lr"
+		echo "With Adam: $useAdam"
+		global_verified_adversarial=0
+		global_notverified_adversarial=0
+		global_verified_noadversarial=0
+		global_notverified_noadversarial=0
+
+		for net in fc1 fc2 fc3 fc4 fc5 conv1 conv2 conv3 conv4 conv5
+		do
+			verified_adversarial=0
+			notverified_adversarial=0
+			verified_noadversarial=0
+			notverified_noadversarial=0
+
+			echo Evaluating network ${net}...
+			for spec in `ls ../$folder/${net}`
+			do
+				perturbed="perturbed"
+				if [[ "$spec" == *"$perturbed"* ]] || [[ "$spec" == *"details"* ]]
+				then
+					:
+				else
+					echo "python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it --lr $lr --useAdam $useAdam"
+					out=$(python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it --lr $lr --useAdam $useAdam)
+					if [ "$out" == "verified" ]
+					then
+						decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
+						root="0."
+						eps="${root}${decimals}"
+						attack=$(python3 attack.py --net ${net} --spec ../$folder/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
+						echo "$out - $attack"
+						if [[ "$attack" == *"Successfully"* ]]
+						then
+							verified_adversarial=$((verified_adversarial+1))
+						else
+							verified_noadversarial=$((verified_noadversarial+1))
+						fi
+					else
+						decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)
+						root="0."
+						eps="${root}${decimals}"
+						attack=$(python3 attack.py --net ${net} --spec ../$folder/${net}/${spec} --k $k --eps $eps --eps_step $eps_step)
+						echo "$out - $attack"
+						if [[ "$attack" == *"Successfully"* ]]
+						then
+							notverified_adversarial=$((notverified_adversarial+1))
+						else
+							notverified_noadversarial=$((notverified_noadversarial+1))
+						fi
+
+					fi
+				fi
+			done
+
+			echo "Results (net: $net)"
+			echo "          adversarial_found          adversarial_notfound"
+			echo "verified  $verified_adversarial                    $verified_noadversarial"
+			echo "notverif  $notverified_adversarial                    $notverified_noadversarial"
+		done
+
+		echo "Global results (learning rate: $lr, useAdam: $useAdam)"
+		echo "          adversarial_found          adversarial_notfound"
+			echo "verified  $global_verified_adversarial                    $global_verified_noadversarial"
+			echo "notverif  $global_notverified_adversarial                    $global_notverified_noadversarial"
+	done
+done
