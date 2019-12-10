@@ -1,7 +1,7 @@
 import argparse
 import torch
 from networks import FullyConnected, Conv, Normalization
-from transformers import TransformedNetwork, upper_lower
+from transformers import TransformedNetwork, upper_lower, ZonotopeLoss
 import torch.nn as nn
 from torch import optim
 from common import loadNetwork
@@ -9,58 +9,47 @@ import time
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
-VERBOSE = True
-
-torch.set_num_threads(1)
-
-# TODO figure out why any image is always certified...
-# Possible improvements:
-# 1) Optimize the number of iterations
-MODE = "NO DEBUG"
+MODE = "DEBUG"
 VERBOSE = False
 
 torch.set_num_threads(4)
 
-def analyze(net, inputs, eps, true_label, slow, it, learningRate=0.001, useAdam=False):
+
+def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.001, use_adam=False, loss_type='mean'):
     beginning = time.time()
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
     parameters = list(transformed_net.get_params())
 
-    if useAdam:
-        optimizer = optim.Adam(transformed_net.parameters(), lr=learningRate)
-    else:
-        optimizer = optim.SGD(transformed_net.parameters(), lr=learningRate, momentum=0.9)
+    zonotope_loss = ZonotopeLoss(kind=loss_type)
 
-    shouldContinue = True
+    if use_adam:
+        optimizer = optim.Adam(transformed_net.parameters(), lr=learning_rate)
+    else:
+        optimizer = optim.SGD(transformed_net.parameters(), lr=learning_rate, momentum=0.9)
+
+    should_continue = True
     i = 0
-    while shouldContinue:
+    while should_continue:
         torch.autograd.set_detect_anomaly(True)
         output_zonotope = transformed_net.forward(inputs)
-        upper, lower = upper_lower(output_zonotope)
-        # we want to prove that the lower bound for the true label is smaller than the
-        # max upper bound for all the other labels, because this means the true label value
-        # will always be bigger than the other labels, and so the classification will be correct
-        lower_bound = lower[0, true_label]
 
-        # If the lower bound of the true label is higher than the upper bound of
-        # any other output, we have verified the input!
-        upper[0, true_label] = -float('inf')  # Ignore upper bound of the true label
+        # check if we can verify
+        upper, lower = upper_lower(output_zonotope)
+        lower_bound = lower[0, true_label]
+        upper[0, true_label] = -float('inf')
         upper_bound = torch.max(upper)
+
+        if MODE == "DEBUG":
+            print("Iteration %i" % i)
+            print("\tBounds:")
+            print("\t\tLower bound: %f" % lower_bound)
+            print("\t\tUpper bound: %f" % upper_bound)
+
         if upper_bound <= lower_bound:
             return 1
 
-        # we want to minimize the max of upper bounds (mean used as max not really
-        # differentiable (same issue as L1 norm, improving only one upper bound may
-        # come at the cost of worsening other upper bounds, and is potentially quite slow
-        # even in the very rare case that it works; using the mean ensure we try to
-        # reduce all upper bounds, avoiding that problem)) and maximize the lower bound of
-        # the real class
-        # Set the upper bound of the true label to 0 because we don't want to take it into
-        # account when computing the loss. What we care about is the difference between
-        # the true label lower bound and the upper bound of the other labels. We don't care
-        # about the upper bound of the true label (because it doesn't matter for verification)
-        upper[0, true_label] = 0
-        loss = torch.mean(upper) - lower_bound
+        # otherwise computes loss
+        loss = zonotope_loss(output_zonotope, true_label)
         loss.backward()
         optimizer.step()
 
@@ -72,20 +61,20 @@ def analyze(net, inputs, eps, true_label, slow, it, learningRate=0.001, useAdam=
                     print(m.lambda_.grad)
                     nonzero_grads = (m.lambda_.grad != 0).type(torch.FloatTensor)
                     num_nonzero_grads = int(torch.sum(nonzero_grads).item())
-                    print("Number of non zero gradient values: %d" % num_nonzero_grads)
-                    print("Their values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
+                    print("\tNumber of non zero gradient values: %d" % num_nonzero_grads)
+                    print("\tTheir values: %s" % m.lambda_.grad[m.lambda_.grad != 0])
                 except:
-                    print('no weight')
+                    print('\tno weight')
 
         transformed_net.clip_lambdas()
 
         if MODE == "DEBUG":
-            print("After clipping")
             # few sanity checks
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()
 
             if VERBOSE:
+                print("After clipping")
                 for m in transformed_net.layers:
                     print(m)
                     try:
@@ -97,16 +86,15 @@ def analyze(net, inputs, eps, true_label, slow, it, learningRate=0.001, useAdam=
                     except:
                         print('no weight')
 
-            print(loss)
-
-            print("Failed: " + str((upper_bound - lower_bound).item()))
-            print(transformed_net.get_mean_lambda_values())
+            print("\tFailed: " + str((upper_bound - lower_bound).item()))
+            print("\t\tLoss: %f" % loss.item())
+            print("\t\tMean lambda values: " + str(transformed_net.get_mean_lambda_values()))
 
         if slow:
-            shouldContinue =  (time.time() - beginning < 110)
+            should_continue = (time.time() - beginning < 110)
         else:
             i += 1
-            shouldContinue = (i < it)
+            should_continue = (i < it)
 
     return 0
 
@@ -121,6 +109,7 @@ def main():
     parser.add_argument('--spec', type=str, required=True, help='Test case to verify.')
     parser.add_argument('--slow', type=int, required=False, default=0, help='Run for almost 2 minutes.')
     parser.add_argument('--it', type=int, required=False, default=100, help='Number of iterations (if not choosing --slow).')
+    parser.add_argument('--loss_type', type=str, required=False, default='mean', help='Type of loss used.')
     parser.add_argument('--lr', type=float, required=False, default=0.001, help='Learning rate.')
     parser.add_argument('--useAdam', type=int, required=False, default=0, help='Use Adam')
     args = parser.parse_args()
@@ -138,7 +127,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam):
+    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam, args.loss_type):
         print('verified')
     else:
         print('not verified')

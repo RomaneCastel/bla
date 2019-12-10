@@ -338,3 +338,52 @@ class TransformedNetwork(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+
+
+class ZonotopeLoss:
+    def __init__(self, kind='mean', **params):
+        self.kind = kind
+
+    def __call__(self, output_zonotope, true_label):
+        if self.kind == 'mean':
+            upper, lower = upper_lower(output_zonotope)
+            # we want to prove that the lower bound for the true label is smaller than the
+            # max upper bound for all the other labels, because this means the true label value
+            # will always be bigger than the other labels, and so the classification will be correct
+            lower_bound = lower[0, true_label]
+
+            # If the lower bound of the true label is higher than the upper bound of
+            # any other output, we have verified the input!
+            upper[0, true_label] = -float('inf')  # Ignore upper bound of the true label
+
+            # we want to minimize the max of upper bounds (mean used as max not really
+            # differentiable (same issue as L1 norm, improving only one upper bound may
+            # come at the cost of worsening other upper bounds, and is potentially quite slow
+            # even in the very rare case that it works; using the mean ensure we try to
+            # reduce all upper bounds, avoiding that problem)) and maximize the lower bound of
+            # the real class
+            # Set the upper bound of the true label to 0 because we don't want to take it into
+            # account when computing the loss. What we care about is the difference between
+            # the true label lower bound and the upper bound of the other labels. We don't care
+            # about the upper bound of the true label (because it doesn't matter for verification)
+            upper[0, true_label] = 0
+            loss = torch.mean(upper) - lower_bound
+
+        elif self.kind == 'pseudo_exponential':
+            # based on the idea that we want upper bounds of classes that are higher than the lower bound of the
+            # true class to be highly reduce, and the one that are lower not to be changed we use an exponential
+            # penalization of the difference between classes upper bounds and true class lower bound.
+            # As a purely exponential loss would lead to skyrocketing loss values, the part after 0 is replaced by
+            # a polynomial function
+            upper, lower = upper_lower(output_zonotope)
+
+            diff = upper[0, :] - lower[0, true_label]
+            diff[true_label] = 0  # we don't to lower difference between upper and lower bounds for true class
+
+            poly = 1 + diff
+            loss = torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[0, true_label]
+
+        else:
+            raise NotImplementedError(self.kind + " is not a possible loss type")
+
+        return loss
