@@ -27,11 +27,14 @@ We therefore need to transform the following layers:
 
 VERBOSE_LOGGING = False
 
+
 # utils function: compute lower and upper bounds of a zonotope
 def upper_lower(zonotope):
+    zonotope = zonotope.zonotope
     upper = zonotope[:, 0] + torch.sum(torch.abs(zonotope[:, 1:]), dim=1)
     lower = zonotope[:, 0] - torch.sum(torch.abs(zonotope[:, 1:]), dim=1)
     return upper, lower
+
 
 @torch.jit.script
 def new_error_terms(x, condition, receiver, start_index, created_terms):
@@ -237,7 +240,7 @@ class TransformedReLU(nn.Module):
         # computes minimum and maximum boundaries for every input value
         # upper and lower bound are tensor of size batch_size x n_features x ((h x w) || vector_size)
         # creates the n_features x batch_size x vector_size lambda values
-        upper, lower = upper_lower(x.zonotope)
+        upper, lower = upper_lower(x)
 
         # lambda has a size of batch_size x ((h x w) || vector_size)
         if not self.is_lambda_set:
@@ -392,7 +395,7 @@ class ZonotopeLoss:
 
     def __call__(self, output_zonotope, true_label):
         if self.kind == 'mean':
-            upper, lower = upper_lower(output_zonotope.zonotope)
+            upper, lower = upper_lower(output_zonotope)
             # we want to prove that the lower bound for the true label is smaller than the
             # max upper bound for all the other labels, because this means the true label value
             # will always be bigger than the other labels, and so the classification will be correct
@@ -421,7 +424,7 @@ class ZonotopeLoss:
             # penalization of the difference between classes upper bounds and true class lower bound.
             # As a purely exponential loss would lead to skyrocketing loss values, the part after 0 is replaced by
             # a polynomial function
-            upper, lower = upper_lower(output_zonotope.zonotope)
+            upper, lower = upper_lower(output_zonotope)
 
             diff = upper[0, :] - lower[0, true_label]
             diff[true_label] = 0  # we don't to lower difference between upper and lower bounds for true class
