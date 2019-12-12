@@ -2,7 +2,7 @@ import unittest
 import torch
 import torch.nn as nn
 from transformers import TransformedInput, TransformedNetwork, TransformedReLU, TransformedFlatten, \
-    TransformedNormalization, TransformedLinear, TransformedConv2D, LayerTransformer, upper_lower
+    TransformedNormalization, TransformedLinear, TransformedConv2D, LayerTransformer, upper_lower, Zonotope
 from networks import Normalization, FullyConnected, Conv
 from torch.nn import Linear
 import numpy as np
@@ -19,7 +19,7 @@ class TransformedInputTester(unittest.TestCase):
         input = torch.FloatTensor([[[[0., 1.], [0.3, 0.7]]]])
         eps = 0.1
         transformed_input = TransformedInput(eps)
-        self.output = transformed_input.forward(input)
+        self.output = transformed_input.forward(input).zonotope
         self.expected_output = torch.zeros([1, 5, 1, 2, 2])
         self.expected_output[0, 0, 0, 0, 0] = eps / 2
         self.expected_output[0, 0, 0, 0, 1] = 1 - eps / 2
@@ -57,7 +57,7 @@ class TransformedNormalizationTester(unittest.TestCase):
         transformed_input = TransformedInput(eps)
         input = transformed_input.forward(input)
         transformed_normalization = TransformedNormalization(normalization_layer)
-        self.output = transformed_normalization.forward(input)
+        self.output = transformed_normalization.forward(input).zonotope
 
         self.expected_output = torch.zeros([1, 5, 1, 2, 2])
         self.expected_output[0, 0, 0, 0, 0] = (eps / 2 - mean) / sigma
@@ -78,8 +78,10 @@ class TransformedNormalizationTester(unittest.TestCase):
             "Error for bias term"
 
     def test_error(self):
-        assert self.expected_output[:, 1:].equal(self.output[:, 1:]), \
-            "Error for error weights"
+        exp = self.expected_output[:, 1:]
+        out = self.output[:, 1:]
+        diff = torch.sum(torch.abs(exp-out))
+        assert diff < 1e-4, "Error for error weights"
 
 
 class TransformedLinearTester(unittest.TestCase):
@@ -102,7 +104,9 @@ class TransformedLinearTester(unittest.TestCase):
         input[0, 1, 1] = 1
         input[0, 2, 0] = 1
         input[0, 2, 1] = 2
-        self.output = transformed_linear.forward(input)
+        z_input = Zonotope()
+        z_input.zonotope = input
+        self.output = transformed_linear.forward(z_input).zonotope
 
         self.expected_output = torch.zeros([1, 3, 2])
         self.expected_output[0, 0, 0] = 10
@@ -167,8 +171,10 @@ class TransformedConv2DTester(unittest.TestCase):
                  [0, -1, 0]]]
             ],
         ])
+        z_input = Zonotope()
+        z_input.zonotope = input
 
-        self.output = transformed_conv.forward(input)
+        self.output = transformed_conv.forward(z_input).zonotope
 
     def test_size(self):
         assert self.expected_output.size() == self.output.size(), \
@@ -196,9 +202,11 @@ class TransformedFlattenTester(unittest.TestCase):
             [0, 0, 0]
         ]]
         input = torch.FloatTensor([[image, error_weight]])
+        z_input = Zonotope()
+        z_input.zonotope = input
         transformed_flatten = TransformedFlatten()
 
-        self.output = transformed_flatten.forward(input)
+        self.output = transformed_flatten.forward(z_input).zonotope
 
         self.expected_output = torch.FloatTensor([
             [
@@ -237,7 +245,10 @@ class TransformedReluTester(unittest.TestCase):
         vector_zonotope = torch.FloatTensor([[vector_input, vector_error_weight]])
 
         transformed_relu = TransformedReLU(torch.Size([1, 1, 2, 2]))
-        self.image_output = transformed_relu.forward(image_zonotope)
+        z_image_zonotope = Zonotope()
+        z_image_zonotope.zonotope = image_zonotope
+        z_image_zonotope.last_error_term = 2
+        self.image_output = transformed_relu.forward(z_image_zonotope).get_zonotope()
         self.expected_image_output = torch.FloatTensor([[
             [[
                 [0.25, 1],
@@ -254,7 +265,10 @@ class TransformedReluTester(unittest.TestCase):
         ]])
 
         transformed_relu = TransformedReLU(torch.Size([1, 4]))
-        self.vector_output = transformed_relu.forward(vector_zonotope)
+        z_vector_zonotope = Zonotope()
+        z_vector_zonotope.zonotope = vector_zonotope
+        z_vector_zonotope.last_error_term = 2
+        self.vector_output = transformed_relu.forward(z_vector_zonotope).get_zonotope()
         self.expected_vector_output = torch.FloatTensor([
             [
                 [0.25, 1, 0, 0],
@@ -265,11 +279,13 @@ class TransformedReluTester(unittest.TestCase):
 
         lambda_vector_input = [0, 0, 1, 1]
         lambda_vector_error_weight = [1, 1, 0, 2]
-        lambda_vector_zonotope = torch.FloatTensor([[lambda_vector_input, lambda_vector_error_weight]])
+        lambda_vector_zonotope = Zonotope()
+        lambda_vector_zonotope.zonotope = torch.FloatTensor([[lambda_vector_input, lambda_vector_error_weight]])
+        lambda_vector_zonotope.last_error_term = 2
         transformed_relu = TransformedReLU(torch.Size([1, 3]))
         transformed_relu.lambda_.data = torch.FloatTensor([[0, 1, 0.5, 1/3]])
         transformed_relu.is_lambda_set = True
-        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope)
+        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope).get_zonotope()
         self.expected_lambda_vector_output = torch.FloatTensor([
             [
                 [0.5, 0.5, 1, 1],
@@ -279,7 +295,6 @@ class TransformedReluTester(unittest.TestCase):
                 [0, 0, 0, 1/3]
             ]
         ])
-
 
     def test_size_image(self):
         assert self.expected_image_output.size() == self.image_output.size(), \
@@ -350,7 +365,10 @@ class ToyNetworkTester(unittest.TestCase):
                 [0, 0.3]
             ]
         ])
-        self.output = self.transformed_net(self.input)
+        z_input = Zonotope()
+        z_input.zonotope = self.input
+        z_input.last_error_term = 3
+        self.output = self.transformed_net(z_input).get_zonotope()
         self.expected_output = torch.FloatTensor([
             [
                 [0.7+0.25*0.5/1.2, 0.7-0.25*0.5/1.2],
