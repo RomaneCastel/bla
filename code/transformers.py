@@ -37,8 +37,8 @@ def upper_lower(zonotope):
 
 
 @torch.jit.script
-def new_error_terms(x, condition, receiver, start_index):
-    # type: (Tensor, Tensor, Tensor, int) -> int
+def new_error_terms(x, condition, receiver, start_index, created_terms):
+    # type: (Tensor, Tensor, Tensor, int, List[List[int]]) -> int
     # x is the ND tensor, condition a x-size boolean tensor (True if a new tensor has to be created for this value)
     # receiver is the N+1D tensor in which the newly created sparse tensor will be stored
     # start_index is the index from which the new tensors will be added
@@ -48,6 +48,7 @@ def new_error_terms(x, condition, receiver, start_index):
         for i in range(x.shape[0]):
             if condition[i].item():
                 receiver[i_error, i] = x[i]
+                created_terms.append([i_error, i])
                 i_error += 1
     # when image
     else:
@@ -56,8 +57,24 @@ def new_error_terms(x, condition, receiver, start_index):
                 for j in range(x.shape[2]):
                     if condition[f, i, j].item():
                         receiver[i_error, f, i, j] = x[f, i, j]
+                        created_terms.append([i_error, f])
                         i_error += 1
     return i_error
+
+
+@torch.jit.script
+def optimized_conv(x, created_terms, i_first_error_term_alone, weight, stride, padding):
+    # type: (Tensor, List[List[int]], int, Tensor, List[int], List[int]) -> Tensor
+    first_block = F.conv2d(x[:i_first_error_term_alone], weight, None, stride, padding)
+    single_layers_processed = [first_block]
+    for e in created_terms:
+        i_error = e[0]
+        feature = e[1]
+        single_layers_processed.append(
+            F.conv2d(x[i_error, feature].unsqueeze(0).unsqueeze(0),
+                     weight[:, feature].unsqueeze(1), None, stride, padding)
+        )
+    return torch.cat(single_layers_processed, dim=0)
 
 
 class TransformedInput(nn.Module):
@@ -65,7 +82,7 @@ class TransformedInput(nn.Module):
         super().__init__()
         self.eps = eps
 
-    def forward(self, x):
+    def forward(self, x, created_terms=[]):
         # creates all the height x width error matrices/vectors
 
         # initializes zonotope
@@ -81,9 +98,11 @@ class TransformedInput(nn.Module):
 
         # creates error terms
         error_terms = self.eps - nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
-        new_error_terms(error_terms, error_terms >= 0, zonotope, 1)
+        created_terms = []
+        new_error_terms(error_terms, error_terms >= 0, zonotope, 1, created_terms)
 
-        return zonotope
+        # returns zonotope, and an array for newly created terms
+        return zonotope, created_terms
 
 
 class TransformedNormalization(nn.Module):
@@ -92,10 +111,10 @@ class TransformedNormalization(nn.Module):
         self.mean = normalization_layer.mean[0, 0, 0, 0]
         self.sigma = normalization_layer.sigma[0, 0, 0, 0]
 
-    def forward(self, x):
+    def forward(self, x, created_terms):
         x[0] -= self.mean
         x /= self.sigma
-        return x
+        return x, created_terms
 
 
 # for Linear layers (both linear transformers)
@@ -104,15 +123,16 @@ class TransformedLinear(nn.Module):
         super().__init__()
         self.layer = layer
 
-    def forward(self, x):
+    def forward(self, x, created_terms):
         # input of size (n_eps + 1) x in_features
+        # created_terms are the error terms that was lastly created i.e. alone in their layer
         # output of size (n_eps + 1) x out_features
         # bias receives full affine transform, error weights only the linear part
         # x: (1 + h x w x n_channels) x n_channels x (width x height)
         x = F.linear(x, self.layer.weight, None)  # no bias for the moment
         if self.layer.bias is not None:
             x[0] += self.layer.bias
-        return x
+        return x, []  # there is no longer term alone in its error weight map
 
 
 class TransformedConv2D(nn.Module):
@@ -120,15 +140,22 @@ class TransformedConv2D(nn.Module):
         super().__init__()
         self.layer = layer
 
-    def forward(self, x):
+    def forward(self, x, created_terms, use_created_terms=True):
         # input of shape
         # 1+n_errors x in_features x h x w
         # output of shape
         # 1+n_errors x out_features x h' x w'
-        x = F.conv2d(x, self.layer.weight, bias=None, stride=self.layer.stride, padding=self.layer.padding)
-        x[0] += self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
-        return x
+        if use_created_terms and len(created_terms) > 0:
+            i_first_error_term_alone = created_terms[0][0]
+            output_x = optimized_conv(x, created_terms, i_first_error_term_alone,
+                                      self.layer.weight, self.layer.stride, self.layer.padding)
+        else:
+            output_x = F.conv2d(x, self.layer.weight, bias=None, stride=self.layer.stride, padding=self.layer.padding)
+
+        output_x[0] += self.layer.bias.unsqueeze(-1).unsqueeze(-1)
+
+        return output_x, []
 
 
 class TransformedFlatten(nn.Module):
@@ -137,14 +164,14 @@ class TransformedFlatten(nn.Module):
         self.start_dim = -3
         self.end_dim = -1
 
-    def forward(self, x):
+    def forward(self, x, created_terms):
         # input of shape
         # 1+n_errors x n_features x h x w
         # output of shape
         # 1+n_errors x (n_features * h * w)
         x = x.flatten(self.start_dim, self.end_dim)
 
-        return x
+        return x, []  # created terms do not matter for vectors
 
 
 class TransformedReLU(nn.Module):
@@ -167,7 +194,7 @@ class TransformedReLU(nn.Module):
         self.lambda_.data = _lambda
         self.is_lambda_set = True
 
-    def forward(self, x):
+    def forward(self, x, created_terms):
         # x: (1 + h x w x n_channels) x n_channels x width x height
         # or x: (1 + h x w x n_channels) x n_channels x (width x height)
         # computes minimum and maximum boundaries for every input value
@@ -216,9 +243,10 @@ class TransformedReLU(nn.Module):
                                       + x[1:] * (lower >= 0).type(torch.FloatTensor)
 
         # filling new error terms
-        new_error_terms(delta/2, has_new_error_term, transformed_x, x.shape[0])
+        created_terms = []
+        new_error_terms(delta/2, has_new_error_term, transformed_x, x.shape[0], created_terms)
 
-        return transformed_x
+        return transformed_x, created_terms
 
     def clip_lambda(self):
         # clips lambda into [0, 1] (might happen after gradient descent)
@@ -320,11 +348,14 @@ class TransformedNetwork(nn.Module):
         return params
 
     def forward(self, x):
-        return self.layers(x)
+        created_terms = []
+        for i, layer in enumerate(self.layers):
+            x, created_terms = layer.forward(x, [])
+        return x
 
 
 class ZonotopeLoss:
-    def __init__(self, kind='mean', **params):
+    def __init__(self, kind='mean'):
         self.kind = kind
 
     def __call__(self, output_zonotope, true_label):

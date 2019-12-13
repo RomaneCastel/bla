@@ -2,7 +2,7 @@ import unittest
 import torch
 import torch.nn as nn
 from transformers import TransformedInput, TransformedNetwork, TransformedReLU, TransformedFlatten, \
-    TransformedNormalization, TransformedLinear, TransformedConv2D, LayerTransformer, upper_lower, Zonotope
+    TransformedNormalization, TransformedLinear, TransformedConv2D, LayerTransformer, upper_lower
 from networks import Normalization, FullyConnected, Conv
 from torch.nn import Linear
 import numpy as np
@@ -19,7 +19,7 @@ class TransformedInputTester(unittest.TestCase):
         input = torch.FloatTensor([[[0., 1.], [0.3, 0.7]]])
         eps = 0.1
         transformed_input = TransformedInput(eps)
-        self.output = transformed_input.forward(input)
+        self.output = transformed_input.forward(input)[0]
         self.expected_output = torch.zeros([5, 1, 2, 2])
         self.expected_output[0, 0, 0, 0] = eps / 2
         self.expected_output[0, 0, 0, 1] = 1 - eps / 2
@@ -55,9 +55,9 @@ class TransformedNormalizationTester(unittest.TestCase):
         input = torch.FloatTensor([[[0., 1.], [0.3, 0.7]]])
         eps = 0.1
         transformed_input = TransformedInput(eps)
-        input = transformed_input.forward(input)
+        input = transformed_input.forward(input, [])[0]
         transformed_normalization = TransformedNormalization(normalization_layer)
-        self.output = transformed_normalization.forward(input)
+        self.output = transformed_normalization.forward(input, [])[0]
 
         self.expected_output = torch.zeros([5, 1, 2, 2])
         self.expected_output[0, 0, 0, 0] = (eps / 2 - mean) / sigma
@@ -104,7 +104,7 @@ class TransformedLinearTester(unittest.TestCase):
         input[1, 1] = 1
         input[2, 0] = 1
         input[2, 1] = 2
-        self.output = transformed_linear.forward(input)
+        self.output = transformed_linear.forward(input, [])[0]
 
         self.expected_output = torch.zeros([3, 2])
         self.expected_output[0, 0] = 10
@@ -170,7 +170,7 @@ class TransformedConv2DTester(unittest.TestCase):
             ]
         )
 
-        self.output = transformed_conv.forward(input)
+        self.output = transformed_conv.forward(input, [[1, 0]])[0]
 
     def test_size(self):
         assert self.expected_output.size() == self.output.size(), \
@@ -200,7 +200,7 @@ class TransformedFlattenTester(unittest.TestCase):
         input = torch.FloatTensor([[image, error_weight]])
         transformed_flatten = TransformedFlatten()
 
-        self.output = transformed_flatten.forward(input)
+        self.output = transformed_flatten.forward(input, [])[0]
 
         self.expected_output = torch.FloatTensor([
             [
@@ -239,7 +239,7 @@ class TransformedReluTester(unittest.TestCase):
         vector_zonotope = torch.FloatTensor([vector_input, vector_error_weight])
 
         transformed_relu = TransformedReLU(torch.Size([1, 1, 2, 2]))
-        self.image_output = transformed_relu.forward(image_zonotope)
+        self.image_output = transformed_relu.forward(image_zonotope, [])[0]
         self.expected_image_output = torch.FloatTensor([
             [[
                 [0.25, 1],
@@ -256,7 +256,7 @@ class TransformedReluTester(unittest.TestCase):
         ])
 
         transformed_relu = TransformedReLU(torch.Size([4]))
-        self.vector_output = transformed_relu.forward(vector_zonotope)
+        self.vector_output = transformed_relu.forward(vector_zonotope, [])[0]
         self.expected_vector_output = torch.FloatTensor(
             [
                 [0.25, 1, 0, 0],
@@ -271,7 +271,7 @@ class TransformedReluTester(unittest.TestCase):
         transformed_relu = TransformedReLU(torch.Size([4]))
         transformed_relu.lambda_.data = torch.FloatTensor([0, 1, 0.5, 1/3])
         transformed_relu.is_lambda_set = True
-        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope)
+        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope, [])[0]
         self.expected_lambda_vector_output = torch.FloatTensor(
             [
                 [0.5, 0.5, 1, 1],
@@ -351,7 +351,7 @@ class ToyNetworkTester(unittest.TestCase):
                 [0, 0.3]
             ]
         )
-        self.output = self.transformed_net(self.input)
+        self.output = self.transformed_net.forward(self.input)[0]
         self.expected_output = torch.FloatTensor(
             [
                 [0.7+0.25*0.5/1.2, 0.7-0.25*0.5/1.2],

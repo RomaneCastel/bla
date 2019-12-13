@@ -33,8 +33,7 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
         if MODE == "DEBUG":
             t0 = time.time()
 
-        torch.autograd.set_detect_anomaly(True)
-        print(inputs.shape)
+        # torch.autograd.set_detect_anomaly(True)
         output_zonotope = transformed_net.forward(inputs[0])
 
         # check if we can verify
