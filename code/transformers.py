@@ -60,55 +60,6 @@ def new_error_terms(x, condition, receiver, start_index):
     return i_error
 
 
-class Zonotope:
-    # object representing zonotopes
-    def __init__(self, x=2000, n_error_terms=0):
-        if x is not None:
-            self.zonotope = torch.zeros(
-                [1+n_error_terms,  # 0 for value, all the others will be for error terms, considered as batch size
-                 x.shape[0],
-                 x.shape[1],
-                 x.shape[2]
-                 ],
-                dtype=x.dtype)
-        self.created_terms = []
-        self.last_error_term = 1
-
-    def add_space(self, n=None):
-        # if the number of new items is not specified, consider that we have to add one error term for each value
-        # of the bias tensor
-        if n is None:
-            if len(self.zonotope.shape) == 4:
-                n = self.zonotope.shape[1] * self.zonotope.shape[2] * self.zonotope.shape[3]
-            else:
-                n = self.zonotope.shape[1]
-        # creates a new zonotope
-        new_shape = list(self.zonotope.shape)
-        new_shape[0] = n
-        new_space = torch.zeros(new_shape, dtype=self.zonotope.dtype)
-        # adds previous values
-        self.zonotope = torch.cat([self.zonotope, new_space], dim=0)
-
-    def fill_bias(self, x):
-        self.zonotope[0] = x
-
-    def get_zonotope(self):
-        return self.zonotope[:self.last_error_term]
-
-    def new_error_terms(self, error_terms, condition):
-        # checks that there is enough space to put the new error terms
-        n_new_error_terms = torch.sum(condition).item()
-        if self.last_error_term + n_new_error_terms > self.zonotope.shape[0]:
-            self.add_space()
-        if n_new_error_terms > 0:
-            self.created_terms = []
-            self.last_error_term = new_error_terms(error_terms,
-                                                   condition,
-                                                   self.zonotope,
-                                                   self.last_error_term,
-                                                   self.created_terms)
-
-
 class TransformedInput(nn.Module):
     def __init__(self, eps):
         super().__init__()
