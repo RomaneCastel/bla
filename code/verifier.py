@@ -30,20 +30,18 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
     should_continue = True
     i = 0
     while should_continue:
+        if MODE == "DEBUG":
+            t0 = time.time()
+
         torch.autograd.set_detect_anomaly(True)
-        output_zonotope = transformed_net.forward(inputs)
+        print(inputs.shape)
+        output_zonotope = transformed_net.forward(inputs[0])
 
         # check if we can verify
         upper, lower = upper_lower(output_zonotope)
-        lower_bound = lower[0, true_label]
-        upper[0, true_label] = -float('inf')
+        lower_bound = lower[true_label]
+        upper[true_label] = -float('inf')
         upper_bound = torch.max(upper)
-
-        if MODE == "DEBUG":
-            print("Iteration %i" % i)
-            print("\tBounds:")
-            print("\t\tLower bound: %f" % lower_bound)
-            print("\t\tUpper bound: %f" % upper_bound)
 
         if upper_bound <= lower_bound:
             return 1
@@ -69,6 +67,10 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
         transformed_net.clip_lambdas()
 
         if MODE == "DEBUG":
+            print("Iteration %i, time taken %f" % (i, time.time() - t0))
+            print("\tBounds:")
+            print("\t\tLower bound: %f" % lower_bound)
+            print("\t\tUpper bound: %f" % upper_bound)
             # few sanity checks
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()

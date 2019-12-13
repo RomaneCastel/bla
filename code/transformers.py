@@ -30,48 +30,45 @@ VERBOSE_LOGGING = False
 
 # utils function: compute lower and upper bounds of a zonotope
 def upper_lower(zonotope):
-    zonotope = zonotope.zonotope
-    upper = zonotope[:, 0] + torch.sum(torch.abs(zonotope[:, 1:]), dim=1)
-    lower = zonotope[:, 0] - torch.sum(torch.abs(zonotope[:, 1:]), dim=1)
+    upper = zonotope[0] + torch.sum(torch.abs(zonotope[1:]), dim=0)
+    lower = zonotope[0] - torch.sum(torch.abs(zonotope[1:]), dim=0)
+    assert upper.shape == zonotope.shape[1:]
     return upper, lower
 
 
 @torch.jit.script
-def new_error_terms(x, condition, receiver, start_index, created_terms):
-    # type: (Tensor, Tensor, Tensor, int, List[List[int]]) -> int
+def new_error_terms(x, condition, receiver, start_index):
+    # type: (Tensor, Tensor, Tensor, int) -> int
     # x is the ND tensor, condition a x-size boolean tensor (True if a new tensor has to be created for this value)
     # receiver is the N+1D tensor in which the newly created sparse tensor will be stored
     # start_index is the index from which the new tensors will be added
     i_error = start_index
     # when vector
-    if len(x.shape) == 2:
-        for i in range(x.shape[1]):
-            if condition[0, i].item():
-                receiver[:, i_error, i] = x[:, i]
-                created_terms.append([i_error, i])
+    if len(x.shape) == 1:
+        for i in range(x.shape[0]):
+            if condition[i].item():
+                receiver[i_error, i] = x[i]
                 i_error += 1
     # when image
     else:
-        for f in range(x.shape[1]):
-            for i in range(x.shape[2]):
-                for j in range(x.shape[3]):
-                    if condition[0, f, i, j].item():
-                        receiver[0, i_error, f, i, j] = x[0, f, i, j]
-                        created_terms.append([i_error, f, i, j])
+        for f in range(x.shape[0]):
+            for i in range(x.shape[1]):
+                for j in range(x.shape[2]):
+                    if condition[f, i, j].item():
+                        receiver[i_error, f, i, j] = x[f, i, j]
                         i_error += 1
     return i_error
 
 
 class Zonotope:
     # object representing zonotopes
-    def __init__(self, x=None, n_error_terms=0):
+    def __init__(self, x=2000, n_error_terms=0):
         if x is not None:
             self.zonotope = torch.zeros(
-                [x.shape[0],
-                 1+n_error_terms,  # 0 for value, all the others will be for error terms
+                [1+n_error_terms,  # 0 for value, all the others will be for error terms, considered as batch size
+                 x.shape[0],
                  x.shape[1],
-                 x.shape[2],
-                 x.shape[3]
+                 x.shape[2]
                  ],
                 dtype=x.dtype)
         self.created_terms = []
@@ -81,36 +78,35 @@ class Zonotope:
         # if the number of new items is not specified, consider that we have to add one error term for each value
         # of the bias tensor
         if n is None:
-            if len(self.zonotope.shape) == 5:
-                n = self.zonotope.shape[2] * self.zonotope.shape[3] * self.zonotope.shape[4]
+            if len(self.zonotope.shape) == 4:
+                n = self.zonotope.shape[1] * self.zonotope.shape[2] * self.zonotope.shape[3]
             else:
-                n = self.zonotope.shape[2]
+                n = self.zonotope.shape[1]
         # creates a new zonotope
         new_shape = list(self.zonotope.shape)
-        new_shape[1] += n
-        new_zonotope = torch.zeros(new_shape, dtype=self.zonotope.dtype)
+        new_shape[0] = n
+        new_space = torch.zeros(new_shape, dtype=self.zonotope.dtype)
         # adds previous values
-        new_zonotope[:, :self.zonotope.shape[1]] = self.zonotope
-        # replaces old zonotope by the new
-        self.zonotope = new_zonotope
+        self.zonotope = torch.cat([self.zonotope, new_space], dim=0)
 
     def fill_bias(self, x):
-        self.zonotope[0, 0] = x
+        self.zonotope[0] = x
 
     def get_zonotope(self):
-        return self.zonotope[:, :self.last_error_term]
+        return self.zonotope[:self.last_error_term]
 
     def new_error_terms(self, error_terms, condition):
         # checks that there is enough space to put the new error terms
         n_new_error_terms = torch.sum(condition).item()
-        if self.last_error_term + n_new_error_terms > self.zonotope.shape[1]:
+        if self.last_error_term + n_new_error_terms > self.zonotope.shape[0]:
             self.add_space()
-        self.created_terms = []
-        self.last_error_term = new_error_terms(error_terms,
-                                               condition,
-                                               self.zonotope,
-                                               self.last_error_term,
-                                               self.created_terms)
+        if n_new_error_terms > 0:
+            self.created_terms = []
+            self.last_error_term = new_error_terms(error_terms,
+                                                   condition,
+                                                   self.zonotope,
+                                                   self.last_error_term,
+                                                   self.created_terms)
 
 
 class TransformedInput(nn.Module):
@@ -122,14 +118,19 @@ class TransformedInput(nn.Module):
         # creates all the height x width error matrices/vectors
 
         # initializes zonotope
-        zonotope = Zonotope(x)
+        zonotope = torch.zeros([
+            1 + x.shape[0] * x.shape[1] * x.shape[2],
+            x.shape[0],
+            x.shape[1],
+            x.shape[2]
+        ])
 
         # fills biases
-        zonotope.fill_bias(x + nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2)
+        zonotope[0] = x + nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
 
         # creates error terms
         error_terms = self.eps - nn.functional.relu(self.eps - x)/2 - nn.functional.relu(x-(1-self.eps))/2
-        zonotope.new_error_terms(error_terms, error_terms >= 0)
+        new_error_terms(error_terms, error_terms >= 0, zonotope, 1)
 
         return zonotope
 
@@ -141,8 +142,8 @@ class TransformedNormalization(nn.Module):
         self.sigma = normalization_layer.sigma[0, 0, 0, 0]
 
     def forward(self, x):
-        x.zonotope[:, 0, :, :, :] -= self.mean
-        x.zonotope /= self.sigma
+        x[0] -= self.mean
+        x /= self.sigma
         return x
 
 
@@ -153,14 +154,13 @@ class TransformedLinear(nn.Module):
         self.layer = layer
 
     def forward(self, x):
-        # input of size batch_size x (n_eps + 1) x in_features
-        # output of size batch_size x (n_eps + 1) x out_features
+        # input of size (n_eps + 1) x in_features
+        # output of size (n_eps + 1) x out_features
         # bias receives full affine transform, error weights only the linear part
-        # x: batch_size x (1 + h x w x n_channels) x n_channels x (width x height)
-        output = F.linear(x.zonotope, self.layer.weight, None)  # no bias for the moment
+        # x: (1 + h x w x n_channels) x n_channels x (width x height)
+        x = F.linear(x, self.layer.weight, None)  # no bias for the moment
         if self.layer.bias is not None:
-            output[:, 0, :] += self.layer.bias
-        x.zonotope = output
+            x[0] += self.layer.bias
         return x
 
 
@@ -171,28 +171,11 @@ class TransformedConv2D(nn.Module):
 
     def forward(self, x):
         # input of shape
-        # batch_size x 1+n_errors x in_features x h x w
+        # 1+n_errors x in_features x h x w
         # output of shape
-        # batch_size x 1+n_errors x out_features x h' x w'
-        # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
-        in_features = self.layer.weight.shape[1]
-        shape_output = self.layer.forward(
-            torch.zeros(
-                [x.zonotope.shape[2], in_features, x.zonotope.shape[3], x.zonotope.shape[4]]
-            )
-        ).shape
-        out_features = shape_output[1]
-        output = torch.zeros(
-            [x.zonotope.shape[0], x.zonotope.shape[1], out_features, shape_output[2], shape_output[3]],
-            dtype=x.zonotope.dtype
-        )
-        output[:, 0, :, :, :] = self.layer.forward(x.zonotope[:, 0, :, :, :]).squeeze()
-        for i in range(1, x.zonotope.shape[1]):
-            # no bias for error weight
-            output[:, i, :, :, :] = self.layer.forward(x.zonotope[:, i, :, :, :])
-            output[:, i, :, :, :] -= self.layer.bias.unsqueeze(-1).unsqueeze(-1)
-
-        x.zonotope = output
+        # 1+n_errors x out_features x h' x w'
+        x = F.conv2d(x, self.layer.weight, bias=None, stride=self.layer.stride, padding=self.layer.padding)
+        x[0] += self.layer.bias.unsqueeze(-1).unsqueeze(-1)
 
         return x
 
@@ -205,11 +188,10 @@ class TransformedFlatten(nn.Module):
 
     def forward(self, x):
         # input of shape
-        # batch_size x 1+n_errors x n_features x h x w
+        # 1+n_errors x n_features x h x w
         # output of shape
-        # batch_size x 1+n_errors x (n_features * h * w)
-        # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
-        x.zonotope = x.zonotope.flatten(self.start_dim, self.end_dim)
+        # 1+n_errors x (n_features * h * w)
+        x = x.flatten(self.start_dim, self.end_dim)
 
         return x
 
@@ -235,18 +217,25 @@ class TransformedReLU(nn.Module):
         self.is_lambda_set = True
 
     def forward(self, x):
-        # x: batch_size x (1 + h x w x n_channels) x n_channels x width x height
-        # or x: batch_size x (1 + h x w x n_channels) x n_channels x (width x height)
+        # x: (1 + h x w x n_channels) x n_channels x width x height
+        # or x: (1 + h x w x n_channels) x n_channels x (width x height)
         # computes minimum and maximum boundaries for every input value
-        # upper and lower bound are tensor of size batch_size x n_features x ((h x w) || vector_size)
-        # creates the n_features x batch_size x vector_size lambda values
+        # upper and lower bound are tensor of size n_features x (h x w) || vector_size
+        # creates the lambda values
         upper, lower = upper_lower(x)
 
-        # lambda has a size of batch_size x ((h x w) || vector_size)
+        # lambda has a size of ((n_c x h x w) || vector_size)
         if not self.is_lambda_set:
             self._set_lambda(lower, upper)
 
-        transformed_x = torch.zeros(x.zonotope.shape)
+        # terms that have new error weights
+        has_new_error_term = (lower * upper < 0).type(torch.FloatTensor)
+        n_new_error_terms = int(torch.sum(has_new_error_term).item())
+
+        shape = list(x.shape)
+        shape[0] += n_new_error_terms
+        transformed_x = torch.zeros(shape)
+
         # delta is the difference in height between top and bottom lines
         # how to compute delta ?
         #   - bottom border is lambda * x
@@ -263,28 +252,22 @@ class TransformedReLU(nn.Module):
         # for crossing border cases, we modify bias
         # for negative case, we 0 is the new bias
         # for positive case, we don't change anything
-        transformed_x[:, 0] = (delta / 2 + self.lambda_ * x.zonotope[:, 0]) \
-                              * (lower * upper < 0).type(torch.FloatTensor) \
-                              + x.zonotope[:, 0] * (lower >= 0).type(torch.FloatTensor)
+        transformed_x[0] = (delta / 2 + self.lambda_ * x[0]) \
+                           * (lower * upper < 0).type(torch.FloatTensor) \
+                           + x[0] * (lower >= 0).type(torch.FloatTensor)
 
         # for crossing border cases, we multiply by lambda error weights
         # for positive cases, we don't change anything
         # for negative cases, it is 0
         # modifying already existing error weights
-        transformed_x[:, 1:] = x.zonotope[:, 1:] * self.lambda_.unsqueeze(1) \
-                               * (lower * upper < 0).type(torch.FloatTensor) \
-                               + x.zonotope[:, 1:] * (lower >= 0).type(torch.FloatTensor)
-
-        x.zonotope = transformed_x
-
-        # adding new error weights
-        # correct as batch_size is equal to 1 here
-        has_new_error_term = (lower * upper < 0).type(torch.FloatTensor)
+        transformed_x[1:x.shape[0]] = x[1:] * self.lambda_ \
+                                      * (lower * upper < 0).type(torch.FloatTensor) \
+                                      + x[1:] * (lower >= 0).type(torch.FloatTensor)
 
         # filling new error terms
-        x.new_error_terms(delta/2, has_new_error_term)
+        new_error_terms(delta/2, has_new_error_term, transformed_x, x.shape[0])
 
-        return x
+        return transformed_x
 
     def clip_lambda(self):
         # clips lambda into [0, 1] (might happen after gradient descent)
@@ -399,11 +382,11 @@ class ZonotopeLoss:
             # we want to prove that the lower bound for the true label is smaller than the
             # max upper bound for all the other labels, because this means the true label value
             # will always be bigger than the other labels, and so the classification will be correct
-            lower_bound = lower[0, true_label]
+            lower_bound = lower[true_label]
 
             # If the lower bound of the true label is higher than the upper bound of
             # any other output, we have verified the input!
-            upper[0, true_label] = -float('inf')  # Ignore upper bound of the true label
+            upper[true_label] = -float('inf')  # Ignore upper bound of the true label
 
             # we want to minimize the max of upper bounds (mean used as max not really
             # differentiable (same issue as L1 norm, improving only one upper bound may
@@ -415,7 +398,7 @@ class ZonotopeLoss:
             # account when computing the loss. What we care about is the difference between
             # the true label lower bound and the upper bound of the other labels. We don't care
             # about the upper bound of the true label (because it doesn't matter for verification)
-            upper[0, true_label] = 0
+            upper[true_label] = 0
             loss = torch.mean(upper) - lower_bound
 
         elif self.kind == 'pseudo_exponential':
@@ -426,11 +409,11 @@ class ZonotopeLoss:
             # a polynomial function
             upper, lower = upper_lower(output_zonotope)
 
-            diff = upper[0, :] - lower[0, true_label]
+            diff = upper - lower[true_label]
             diff[true_label] = 0  # we don't to lower difference between upper and lower bounds for true class
 
             poly = 1 + diff
-            loss = torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[0, true_label]
+            loss = torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[true_label]
 
         else:
             raise NotImplementedError(self.kind + " is not a possible loss type")

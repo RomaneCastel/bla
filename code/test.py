@@ -16,31 +16,31 @@ Unit tests to quickly verify that the transformers have no obvious bugs
 
 class TransformedInputTester(unittest.TestCase):
     def setUp(self):
-        input = torch.FloatTensor([[[[0., 1.], [0.3, 0.7]]]])
+        input = torch.FloatTensor([[[0., 1.], [0.3, 0.7]]])
         eps = 0.1
         transformed_input = TransformedInput(eps)
-        self.output = transformed_input.forward(input).zonotope
-        self.expected_output = torch.zeros([1, 5, 1, 2, 2])
-        self.expected_output[0, 0, 0, 0, 0] = eps / 2
-        self.expected_output[0, 0, 0, 0, 1] = 1 - eps / 2
-        self.expected_output[0, 0, 0, 1, 0] = 0.3
-        self.expected_output[0, 0, 0, 1, 1] = 0.7
-        self.expected_output[0, 1, 0, 0, 0] = eps / 2
-        self.expected_output[0, 2, 0, 0, 1] = eps / 2
-        self.expected_output[0, 3, 0, 1, 0] = eps
-        self.expected_output[0, 4, 0, 1, 1] = eps
+        self.output = transformed_input.forward(input)
+        self.expected_output = torch.zeros([5, 1, 2, 2])
+        self.expected_output[0, 0, 0, 0] = eps / 2
+        self.expected_output[0, 0, 0, 1] = 1 - eps / 2
+        self.expected_output[0, 0, 1, 0] = 0.3
+        self.expected_output[0, 0, 1, 1] = 0.7
+        self.expected_output[1, 0, 0, 0] = eps / 2
+        self.expected_output[2, 0, 0, 1] = eps / 2
+        self.expected_output[3, 0, 1, 0] = eps
+        self.expected_output[4, 0, 1, 1] = eps
 
     def test_size(self):
         assert self.expected_output.size() == self.output.size(), \
             "Different sizes"
 
     def test_bias(self):
-        assert self.expected_output[:, 0].equal(self.output[:, 0]), \
+        assert self.expected_output[0].equal(self.output[0]), \
             "Error for bias term"
 
     def test_error(self):
-        exp = self.expected_output[:, 1:]
-        out = self.output[:, 1:]
+        exp = self.expected_output[1:]
+        out = self.output[1:]
         diff = torch.sum(exp - out).item()
         assert diff < 1e-4, \
             "Error for error weights"
@@ -52,34 +52,34 @@ class TransformedNormalizationTester(unittest.TestCase):
         mean = normalization_layer.mean
         sigma = normalization_layer.sigma
 
-        input = torch.FloatTensor([[[[0., 1.], [0.3, 0.7]]]])
+        input = torch.FloatTensor([[[0., 1.], [0.3, 0.7]]])
         eps = 0.1
         transformed_input = TransformedInput(eps)
         input = transformed_input.forward(input)
         transformed_normalization = TransformedNormalization(normalization_layer)
-        self.output = transformed_normalization.forward(input).zonotope
+        self.output = transformed_normalization.forward(input)
 
-        self.expected_output = torch.zeros([1, 5, 1, 2, 2])
-        self.expected_output[0, 0, 0, 0, 0] = (eps / 2 - mean) / sigma
-        self.expected_output[0, 0, 0, 0, 1] = (1 - eps / 2 - mean) / sigma
-        self.expected_output[0, 0, 0, 1, 0] = (0.3 - mean) / sigma
-        self.expected_output[0, 0, 0, 1, 1] = (0.7 - mean) / sigma
-        self.expected_output[0, 1, 0, 0, 0] = eps / 2 / sigma
-        self.expected_output[0, 2, 0, 0, 1] = eps / 2 / sigma
-        self.expected_output[0, 3, 0, 1, 0] = eps / sigma
-        self.expected_output[0, 4, 0, 1, 1] = eps / sigma
+        self.expected_output = torch.zeros([5, 1, 2, 2])
+        self.expected_output[0, 0, 0, 0] = (eps / 2 - mean) / sigma
+        self.expected_output[0, 0, 0, 1] = (1 - eps / 2 - mean) / sigma
+        self.expected_output[0, 0, 1, 0] = (0.3 - mean) / sigma
+        self.expected_output[0, 0, 1, 1] = (0.7 - mean) / sigma
+        self.expected_output[1, 0, 0, 0] = eps / 2 / sigma
+        self.expected_output[2, 0, 0, 1] = eps / 2 / sigma
+        self.expected_output[3, 0, 1, 0] = eps / sigma
+        self.expected_output[4, 0, 1, 1] = eps / sigma
 
     def test_size(self):
         assert self.expected_output.size() == self.output.size(), \
             "Different sizes"
 
     def test_bias(self):
-        assert self.expected_output[:, 0].equal(self.output[:, 0]), \
+        assert self.expected_output[0].equal(self.output[0]), \
             "Error for bias term"
 
     def test_error(self):
-        exp = self.expected_output[:, 1:]
-        out = self.output[:, 1:]
+        exp = self.expected_output[1:]
+        out = self.output[1:]
         diff = torch.sum(torch.abs(exp-out))
         assert diff < 1e-4, "Error for error weights"
 
@@ -97,43 +97,41 @@ class TransformedLinearTester(unittest.TestCase):
 
         transformed_linear = TransformedLinear(linear_layer)
 
-        input = torch.zeros([1, 3, 2])
-        input[0, 0, 0] = 4
-        input[0, 0, 1] = 3
-        input[0, 1, 0] = 2
-        input[0, 1, 1] = 1
-        input[0, 2, 0] = 1
-        input[0, 2, 1] = 2
-        z_input = Zonotope()
-        z_input.zonotope = input
-        self.output = transformed_linear.forward(z_input).zonotope
+        input = torch.zeros([3, 2])
+        input[0, 0] = 4
+        input[0, 1] = 3
+        input[1, 0] = 2
+        input[1, 1] = 1
+        input[2, 0] = 1
+        input[2, 1] = 2
+        self.output = transformed_linear.forward(input)
 
-        self.expected_output = torch.zeros([1, 3, 2])
-        self.expected_output[0, 0, 0] = 10
-        self.expected_output[0, 0, 1] = 0
-        self.expected_output[0, 1, 0] = 4
-        self.expected_output[0, 1, 1] = -1
-        self.expected_output[0, 2, 0] = 5
-        self.expected_output[0, 2, 1] = 1
+        self.expected_output = torch.zeros([3, 2])
+        self.expected_output[0, 0] = 10
+        self.expected_output[0, 1] = 0
+        self.expected_output[1, 0] = 4
+        self.expected_output[1, 1] = -1
+        self.expected_output[2, 0] = 5
+        self.expected_output[2, 1] = 1
 
     def test_size(self):
         assert self.expected_output.size() == self.output.size(), \
             "Different sizes"
 
     def test_bias(self):
-        assert self.expected_output[:, 0].equal(self.output[:, 0]), \
+        assert self.expected_output[0].equal(self.output[0]), \
             "Error for bias term"
 
     def test_error(self):
-        assert self.expected_output[:, 1:].equal(self.output[:, 1:]), \
+        assert self.expected_output[1:].equal(self.output[1:]), \
             "Error for error weights"
 
 
 class TransformedConv2DTester(unittest.TestCase):
     def setUp(self):
         kernel_filter = nn.Parameter(
-            torch.FloatTensor(
-                [[[
+            torch.FloatTensor([
+                [[
                     [-1, 0, 1],
                     [1, 1, 0],
                     [0, 1, 1]
@@ -158,10 +156,10 @@ class TransformedConv2DTester(unittest.TestCase):
             [1, 0, 0],
             [0, 0, 0]
         ]]
-        input = torch.FloatTensor([[image, error_weight]])
+        input = torch.FloatTensor([image, error_weight])
         transformed_conv = TransformedConv2D(conv_layer)
 
-        self.expected_output = torch.FloatTensor([
+        self.expected_output = torch.FloatTensor(
             [
                 [[[0, 0, 4],
                  [1, 6, 1],
@@ -169,23 +167,21 @@ class TransformedConv2DTester(unittest.TestCase):
                 [[[1, 0, 0],
                  [1, 1, 0],
                  [0, -1, 0]]]
-            ],
-        ])
-        z_input = Zonotope()
-        z_input.zonotope = input
+            ]
+        )
 
-        self.output = transformed_conv.forward(z_input).zonotope
+        self.output = transformed_conv.forward(input)
 
     def test_size(self):
         assert self.expected_output.size() == self.output.size(), \
             "Different sizes"
 
     def test_bias(self):
-        assert self.expected_output[:, 0].equal(self.output[:, 0]), \
+        assert self.expected_output[0].equal(self.output[0]), \
             "Error for bias term"
 
     def test_error(self):
-        assert self.expected_output[:, 1:].equal(self.output[:, 1:]), \
+        assert self.expected_output[1:].equal(self.output[1:]), \
             "Error for error weights"
 
 
@@ -202,11 +198,9 @@ class TransformedFlattenTester(unittest.TestCase):
             [0, 0, 0]
         ]]
         input = torch.FloatTensor([[image, error_weight]])
-        z_input = Zonotope()
-        z_input.zonotope = input
         transformed_flatten = TransformedFlatten()
 
-        self.output = transformed_flatten.forward(z_input).zonotope
+        self.output = transformed_flatten.forward(input)
 
         self.expected_output = torch.FloatTensor([
             [
@@ -238,18 +232,15 @@ class TransformedReluTester(unittest.TestCase):
             [1, -1],
             [0.5, 0]
         ]]
-        image_zonotope = torch.FloatTensor([[image_input, image_error_weight]])
+        image_zonotope = torch.FloatTensor([image_input, image_error_weight])
 
         vector_input = [0, 1, -0.5, 0]
         vector_error_weight = [1, -1, 0.5, 0]
-        vector_zonotope = torch.FloatTensor([[vector_input, vector_error_weight]])
+        vector_zonotope = torch.FloatTensor([vector_input, vector_error_weight])
 
         transformed_relu = TransformedReLU(torch.Size([1, 1, 2, 2]))
-        z_image_zonotope = Zonotope()
-        z_image_zonotope.zonotope = image_zonotope
-        z_image_zonotope.last_error_term = 2
-        self.image_output = transformed_relu.forward(z_image_zonotope).get_zonotope()
-        self.expected_image_output = torch.FloatTensor([[
+        self.image_output = transformed_relu.forward(image_zonotope)
+        self.expected_image_output = torch.FloatTensor([
             [[
                 [0.25, 1],
                 [0, 0.5]
@@ -262,31 +253,26 @@ class TransformedReluTester(unittest.TestCase):
                 [0.25, 0],
                 [0, 0]
             ]]
-        ]])
+        ])
 
-        transformed_relu = TransformedReLU(torch.Size([1, 4]))
-        z_vector_zonotope = Zonotope()
-        z_vector_zonotope.zonotope = vector_zonotope
-        z_vector_zonotope.last_error_term = 2
-        self.vector_output = transformed_relu.forward(z_vector_zonotope).get_zonotope()
-        self.expected_vector_output = torch.FloatTensor([
+        transformed_relu = TransformedReLU(torch.Size([4]))
+        self.vector_output = transformed_relu.forward(vector_zonotope)
+        self.expected_vector_output = torch.FloatTensor(
             [
                 [0.25, 1, 0, 0],
                 [0.5, -1, 0, 0],
                 [0.25, 0, 0, 0]
             ]
-        ])
+        )
 
         lambda_vector_input = [0, 0, 1, 1]
         lambda_vector_error_weight = [1, 1, 0, 2]
-        lambda_vector_zonotope = Zonotope()
-        lambda_vector_zonotope.zonotope = torch.FloatTensor([[lambda_vector_input, lambda_vector_error_weight]])
-        lambda_vector_zonotope.last_error_term = 2
-        transformed_relu = TransformedReLU(torch.Size([1, 3]))
-        transformed_relu.lambda_.data = torch.FloatTensor([[0, 1, 0.5, 1/3]])
+        lambda_vector_zonotope = torch.FloatTensor([lambda_vector_input, lambda_vector_error_weight])
+        transformed_relu = TransformedReLU(torch.Size([4]))
+        transformed_relu.lambda_.data = torch.FloatTensor([0, 1, 0.5, 1/3])
         transformed_relu.is_lambda_set = True
-        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope).get_zonotope()
-        self.expected_lambda_vector_output = torch.FloatTensor([
+        self.lambda_vector_output = transformed_relu.forward(lambda_vector_zonotope)
+        self.expected_lambda_vector_output = torch.FloatTensor(
             [
                 [0.5, 0.5, 1, 1],
                 [0, 1, 0, 2/3],
@@ -294,7 +280,7 @@ class TransformedReluTester(unittest.TestCase):
                 [0, 0.25, 0, 0],
                 [0, 0, 0, 1/3]
             ]
-        ])
+        )
 
     def test_size_image(self):
         assert self.expected_image_output.size() == self.image_output.size(), \
@@ -358,25 +344,22 @@ class ToyNetworkTester(unittest.TestCase):
         layers[2].bias.data = torch.FloatTensor([0, 0])
         self.net = nn.Sequential(*layers)
         self.transformed_net = nn.Sequential(*[LayerTransformer()(layer, []) for layer in layers])
-        self.input = torch.FloatTensor([
+        self.input = torch.FloatTensor(
             [
                 [0.3, 0.4],
                 [0.3, 0],
                 [0, 0.3]
             ]
-        ])
-        z_input = Zonotope()
-        z_input.zonotope = self.input
-        z_input.last_error_term = 3
-        self.output = self.transformed_net(z_input).get_zonotope()
-        self.expected_output = torch.FloatTensor([
+        )
+        self.output = self.transformed_net(self.input)
+        self.expected_output = torch.FloatTensor(
             [
                 [0.7+0.25*0.5/1.2, 0.7-0.25*0.5/1.2],
                 [0.425, 0.175],
                 [0.175, 0.425],
                 [0.35/2.4, -0.35/2.4]
             ]
-        ])
+        )
 
     def test_right_bias_output(self):
         exp = self.expected_output[:, 0]
@@ -394,9 +377,9 @@ class ToyNetworkTester(unittest.TestCase):
 
     def test_is_verified(self):
         # we want to show lower o1 >= upper o2
-        o1 = self.output[:, :, 0]
+        o1 = self.output[:, 0]
         l1, _ = upper_lower(o1)
-        o2 = self.output[:, :, 1]
+        o2 = self.output[:, 1]
         _, o2 = upper_lower(o2)
         assert l1 > o2, "Should have certified"
 
