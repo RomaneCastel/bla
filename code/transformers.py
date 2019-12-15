@@ -358,9 +358,8 @@ class ZonotopeLoss:
     def __init__(self, kind='mean'):
         self.kind = kind
 
-    def __call__(self, output_zonotope, true_label):
+    def __call__(self, upper, lower, true_label):
         if self.kind == 'mean':
-            upper, lower = upper_lower(output_zonotope)
             # we want to prove that the lower bound for the true label is smaller than the
             # max upper bound for all the other labels, because this means the true label value
             # will always be bigger than the other labels, and so the classification will be correct
@@ -389,7 +388,6 @@ class ZonotopeLoss:
             # penalization of the difference between classes upper bounds and true class lower bound.
             # As a purely exponential loss would lead to skyrocketing loss values, the part after 0 is replaced by
             # a polynomial function
-            upper, lower = upper_lower(output_zonotope)
 
             diff = upper - lower[true_label]
             diff[true_label] = 0  # we don't to lower difference between upper and lower bounds for true class

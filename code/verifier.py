@@ -29,6 +29,7 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
 
     should_continue = True
     i = 0
+    max_lower, min_upper = torch.zeros([10]), torch.zeros([10])
     while should_continue:
         if MODE == "DEBUG":
             t0 = time.time()
@@ -38,15 +39,27 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
 
         # check if we can verify
         upper, lower = upper_lower(output_zonotope)
-        lower_bound = lower[true_label]
         upper[true_label] = -float('inf')
-        upper_bound = torch.max(upper)
+        min_upper = torch.min(upper, min_upper)
+        max_lower = torch.max(lower, max_lower)
+
+        verficiation_on_normal_bounds = True
+        if True:
+            lower_bound = lower[true_label]
+            upper_bound = torch.max(upper)
+        else:
+            lower_bound = max_lower[true_label]
+            upper_bound = torch.max(min_upper)
 
         if upper_bound <= lower_bound:
             return 1
 
         # otherwise computes loss
-        loss = zonotope_loss(output_zonotope, true_label)
+        loss_on_normal_bounds = True
+        if loss_on_normal_bounds:
+            loss = zonotope_loss(upper, lower, true_label)
+        else:
+            loss = zonotope_loss(min_upper, max_lower, true_label)
         loss.backward()
         optimizer.step()
 
