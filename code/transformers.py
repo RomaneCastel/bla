@@ -274,7 +274,9 @@ class LayerTransformer:
 
 # transformed network
 class TransformedNetwork(nn.Module):
-    def __init__(self, network, eps, input_size):
+    def __init__(self, network, eps, input_size, n_relus_to_keep=10000):
+        # n_relus_to_keep is the number of ReLU layers that will have their parameters free to move, starting from
+        # the deepest layers
         super().__init__()
         # if conv network
         self.input_size = [1, 1, input_size, input_size]
@@ -283,17 +285,28 @@ class TransformedNetwork(nn.Module):
 
         layers = [TransformedInput(eps)]
         transformer = LayerTransformer()
-        seen_linear_layer = False
-        #number_layers = 1
         for i, layer in enumerate(self.initial_network_layers):
             layers.append(transformer(layer, shapes[i]))
+
+        layer_names = [type(l).__name__ for l in layers]
+        is_relu_layer = [name == 'TransformedReLU' for i, name in enumerate(layer_names)]
+
+        relu_layer_to_freeze = is_relu_layer
+        if n_relus_to_keep >= 1:
+            for i in range(len(relu_layer_to_freeze)-1, -1, -1):
+                if relu_layer_to_freeze[i]:
+                    relu_layer_to_freeze[i] = False
+                    n_relus_to_keep -= 1
+                if n_relus_to_keep == 0:
+                    break
+        relu_layer_to_keep = [not e for e in relu_layer_to_freeze]
+        # note: other layers than ReLU are marked as True but we will not keep active their gradients
+
+        for i, layer in enumerate(layers):
             # freeze weights if layer is not ReLU layer
-            for param in layers[-1].parameters():
-                if isinstance(layers[-1], TransformedReLU) and seen_linear_layer:
-                    param.requires_grad = True
-                elif isinstance(layers[-1], TransformedLinear):
-                    seen_linear_layer = True
-                    param.requires_grad = False
+            for param in layer.parameters():
+                if isinstance(layer, TransformedReLU):
+                    param.requires_grad = relu_layer_to_keep[i]
                 else:
                     param.requires_grad = False
         self.layers = nn.Sequential(*layers)
@@ -363,9 +376,8 @@ class ZonotopeLoss:
     def __init__(self, kind='mean'):
         self.kind = kind
 
-    def __call__(self, output_zonotope, true_label):
+    def __call__(self, upper, lower, true_label):
         if self.kind == 'mean':
-            upper, lower = upper_lower(output_zonotope)
             # we want to prove that the lower bound for the true label is smaller than the
             # max upper bound for all the other labels, because this means the true label value
             # will always be bigger than the other labels, and so the classification will be correct
@@ -394,7 +406,6 @@ class ZonotopeLoss:
             # penalization of the difference between classes upper bounds and true class lower bound.
             # As a purely exponential loss would lead to skyrocketing loss values, the part after 0 is replaced by
             # a polynomial function
-            upper, lower = upper_lower(output_zonotope)
 
             diff = upper - lower[true_label]
             diff[true_label] = 0  # we don't to lower difference between upper and lower bounds for true class
