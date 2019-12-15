@@ -9,7 +9,7 @@ import time
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
-MODE = "DEBUG"
+MODE = "NODEBUG"
 VERBOSE = False
 
 torch.set_num_threads(4)
@@ -17,6 +17,7 @@ torch.set_num_threads(4)
 
 def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.001, use_adam=False, loss_type='mean'):
     beginning = time.time()
+    print("net: ", net)
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
     parameters = list(transformed_net.get_params())
 
