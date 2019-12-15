@@ -283,12 +283,17 @@ class TransformedNetwork(nn.Module):
 
         layers = [TransformedInput(eps)]
         transformer = LayerTransformer()
+        seen_linear_layer = False
+        #number_layers = 1
         for i, layer in enumerate(self.initial_network_layers):
             layers.append(transformer(layer, shapes[i]))
             # freeze weights if layer is not ReLU layer
             for param in layers[-1].parameters():
-                if isinstance(layers[-1], TransformedReLU):
+                if isinstance(layers[-1], TransformedReLU) and seen_linear_layer:
                     param.requires_grad = True
+                elif isinstance(layers[-1], TransformedLinear):
+                    seen_linear_layer = True
+                    param.requires_grad = False
                 else:
                     param.requires_grad = False
         self.layers = nn.Sequential(*layers)
