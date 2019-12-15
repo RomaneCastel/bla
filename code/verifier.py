@@ -9,7 +9,7 @@ import time
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
-MODE = "NODEBUG"
+MODE = "DEBUG"
 VERBOSE = False
 
 torch.set_num_threads(4)
@@ -17,8 +17,11 @@ torch.set_num_threads(4)
 
 def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.001, use_adam=False, loss_type='mean'):
     beginning = time.time()
-    print("net: ", net)
-    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE)
+
+    if VERBOSE:
+        print("net: ", net)
+
+    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=1000)
     parameters = list(transformed_net.get_params())
 
     zonotope_loss = ZonotopeLoss(kind=loss_type)
@@ -30,7 +33,7 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
 
     should_continue = True
     i = 0
-    max_lower, min_upper = torch.zeros([10]), torch.zeros([10])
+    max_lower, min_upper = -float('inf') * torch.ones([10]), float('inf') * torch.ones([10])
     while should_continue:
         if MODE == "DEBUG":
             t0 = time.time()
@@ -44,8 +47,8 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
         min_upper = torch.min(upper, min_upper)
         max_lower = torch.max(lower, max_lower)
 
-        verficiation_on_normal_bounds = True
-        if True:
+        verficiation_on_normal_bounds = False
+        if verficiation_on_normal_bounds:
             lower_bound = lower[true_label]
             upper_bound = torch.max(upper)
         else:
@@ -56,11 +59,7 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
             return 1
 
         # otherwise computes loss
-        loss_on_normal_bounds = True
-        if loss_on_normal_bounds:
-            loss = zonotope_loss(upper, lower, true_label)
-        else:
-            loss = zonotope_loss(min_upper, max_lower, true_label)
+        loss = zonotope_loss(upper, lower, true_label)
         loss.backward()
         optimizer.step()
 
