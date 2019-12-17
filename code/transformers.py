@@ -358,17 +358,18 @@ class TransformedNetwork(nn.Module):
                     values.append(torch.mean(param).item())
         return values
 
-    def get_params(self):
+    def get_params(self, only_relu=False):
         params = []
         for i, layer in enumerate(self.layers):
             for param in layer.parameters():
-                params.append(param)
+                if not only_relu or type(layer).__name__ == "TransformedReLU":
+                    params.append(param)
         return params
 
     def forward(self, x):
         created_terms = []
         for i, layer in enumerate(self.layers):
-            x, created_terms = layer.forward(x, [])
+            x, created_terms = layer.forward(x, created_terms)
         return x
 
 
@@ -376,7 +377,7 @@ class ZonotopeLoss:
     def __init__(self, kind='mean'):
         self.kind = kind
 
-    def __call__(self, upper, lower, true_label):
+    def __call__(self, upper, lower, output_zonotope, true_label):
         if self.kind == 'mean':
             # we want to prove that the lower bound for the true label is smaller than the
             # max upper bound for all the other labels, because this means the true label value
@@ -412,6 +413,20 @@ class ZonotopeLoss:
 
             poly = 1 + diff
             loss = torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[true_label]
+
+        elif self.kind == 'weighted_L2':
+            diff = upper - lower[true_label]
+            diff[true_label] = 0
+            poly = 1 + diff
+            class_weight = torch.exp(diff) * (diff < 0) + poly * (diff >= 0)
+            loss = torch.sum(class_weight * torch.sum(output_zonotope[1:] * output_zonotope[1:], dim=0))
+
+        elif self.kind == 'weighted_L1':
+            diff = upper - lower[true_label]
+            diff[true_label] = 0
+            poly = 1 + diff
+            class_weight = torch.exp(diff) * (diff < 0) + poly * (diff >= 0)
+            loss = torch.sum(class_weight * torch.sum(torch.abs(output_zonotope[1:]), dim=0))
 
         else:
             raise NotImplementedError(self.kind + " is not a possible loss type")
