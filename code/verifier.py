@@ -15,13 +15,14 @@ VERBOSE = False
 torch.set_num_threads(4)
 
 
-def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.001, use_adam=False, loss_type='mean'):
+def analyze(net, inputs, eps, true_label,
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10):
     beginning = time.time()
 
     if VERBOSE:
         print("net: ", net)
 
-    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=1000)
+    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=n_relus_to_keep)
     parameters = list(transformed_net.get_params())
 
     zonotope_loss = ZonotopeLoss(kind=loss_type)
@@ -43,6 +44,7 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
 
         # check if we can verify
         upper, lower = upper_lower(output_zonotope)
+        upper_true_label = upper[true_label].item()
         upper[true_label] = -float('inf')
         min_upper = torch.min(upper, min_upper)
         max_lower = torch.max(lower, max_lower)
@@ -59,7 +61,8 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
             return 1
 
         # otherwise computes loss
-        loss = zonotope_loss(upper, lower, true_label)
+        loss = zonotope_loss(upper, lower, output_zonotope, true_label)
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -76,6 +79,8 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
                 except:
                     print('\tno weight')
 
+        print()
+
         transformed_net.clip_lambdas()
 
         if MODE == "DEBUG":
@@ -83,6 +88,10 @@ def analyze(net, inputs, eps, true_label, slow=False, it=100, learning_rate=0.00
             print("\tBounds:")
             print("\t\tLower bound: %f" % lower_bound)
             print("\t\tUpper bound: %f" % upper_bound)
+            upper[true_label] = upper_true_label
+            print("\t\tIntervals per class (true class is %d):"%true_label)
+            for c in range(10):
+                print("\t\t\tClass %d: %f +- %f" % (c, (lower[c]+upper[c]).item()/2, (upper[c]-lower[c]).item()/2))
             # few sanity checks
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()
@@ -125,6 +134,7 @@ def main():
     parser.add_argument('--it', type=int, required=False, default=100, help='Number of iterations (if not choosing --slow).')
     parser.add_argument('--loss_type', type=str, required=False, default='mean', help='Type of loss used.')
     parser.add_argument('--lr', type=float, required=False, default=0.001, help='Learning rate.')
+    parser.add_argument('--n_relus_to_keep', type=int, required=False, default=10, help='Number of relu layers to keep.')
     parser.add_argument('--useAdam', type=int, required=False, default=0, help='Use Adam')
     args = parser.parse_args()
 
@@ -141,7 +151,8 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam, args.loss_type):
+    if analyze(net, inputs, eps, true_label,
+               args.slow, args.it, args.lr, args.useAdam, args.loss_type, args.n_relus_to_keep):
         print('verified')
     else:
         print('not verified')
