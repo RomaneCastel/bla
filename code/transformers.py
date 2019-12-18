@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
-from torch.distributions.multivariate_normal import MultivariateNormal
+from torch.distributions.multivariate_normal import Normal
 
 """
 The goal is to transform a network into zonotope verifier network.
@@ -176,28 +176,42 @@ class TransformedFlatten(nn.Module):
 
 
 class TransformedReLU(nn.Module):
-    def __init__(self, shape):
+    def __init__(self, shape, is_last_relu_layer=False):
         super().__init__()
         self.lambda_ = nn.Parameter(torch.Tensor(shape), requires_grad=True)
         # if we have already initialized lambda
         self.is_lambda_set = False
 
+        # WIP
+        self.is_last_relu_layer = is_last_relu_layer
+        if self.is_last_relu_layer:
+            self.init_value = 'auto'  # 0.9999
+        else:
+            self.init_value = 'auto'
+
     def _set_lambda(self, lower, upper):
-        # set as its optimal area value
-        #  if u <= 0, l = 0
-        #  if l >= 0, l = 1
-        #  else l = u / (u-l)
-        _lambda = (lower >= 0).type(torch.FloatTensor) \
-                  + (lower * upper < 0).type(torch.FloatTensor) \
-                  * upper / (upper - lower)
-        # set all nans to 1
-        _lambda[_lambda != _lambda] = 0.5
+        if self.init_value == 'auto':
+            # set as its optimal area value
+            #  if u <= 0, l = 0
+            #  if l >= 0, l = 1
+            #  else l = u / (u-l)
+            _lambda = (lower >= 0).type(torch.FloatTensor) \
+                      + (lower * upper < 0).type(torch.FloatTensor) \
+                      * upper / (upper - lower)
+            # set all nans to 1
+            _lambda[_lambda != _lambda] = 0.5
+        else:
+            _lambda = (lower >= 0).type(torch.FloatTensor) \
+                      + (lower * upper < 0).type(torch.FloatTensor) \
+                      * self.init_value
         self.lambda_.data = _lambda
         self.is_lambda_set = True
-        self.lambda_gaussian = MultivariateNormal(self.lambda_.data, torch.eye(self.lambda_.data.shape[0]))
+        std = 0.1
+        self.lambda_gaussian = Normal(self.lambda_.data, std)
 
     def shuffle_lambda(self):
         self.lambda_.data = self.lambda_gaussian.sample()
+        self.clip_lambda()
 
     def forward(self, x, created_terms):
         # x: (1 + h x w x n_channels) x n_channels x width x height
@@ -260,7 +274,7 @@ class TransformedReLU(nn.Module):
 
 # general layer transformer class that, when given a layer, returns the corresponding transformed layer
 class LayerTransformer:
-    def __call__(self, layer, shape):
+    def __call__(self, layer, shape, is_last_relu_layer=False):
         # shape is for ReLU layers
         # layer type dependent transformation
         if isinstance(layer, Normalization):
@@ -272,7 +286,7 @@ class LayerTransformer:
         elif isinstance(layer, nn.Flatten):
             return TransformedFlatten()
         elif isinstance(layer, nn.ReLU):
-            return TransformedReLU(shape)
+            return TransformedReLU(shape, is_last_relu_layer=is_last_relu_layer)
         else:
             raise NotImplementedError('Unknown layer')
 
@@ -288,13 +302,14 @@ class TransformedNetwork(nn.Module):
         self.initial_network_layers = network.layers
         shapes = self.get_shape_after_each_layer()
 
+        layer_names = [type(l).__name__ for l in self.initial_network_layers]
+        is_relu_layer = [name == 'ReLU' for i, name in enumerate(layer_names)]
+        last_relu_layer = [i for i, b in enumerate(is_relu_layer) if b][-1]
+
         layers = [TransformedInput(eps)]
         transformer = LayerTransformer()
         for i, layer in enumerate(self.initial_network_layers):
-            layers.append(transformer(layer, shapes[i]))
-
-        layer_names = [type(l).__name__ for l in layers]
-        is_relu_layer = [name == 'TransformedReLU' for i, name in enumerate(layer_names)]
+            layers.append(transformer(layer, shapes[i], is_last_relu_layer=(last_relu_layer==i)))
 
         relu_layer_to_freeze = is_relu_layer
         if n_relus_to_keep >= 1:
@@ -315,13 +330,15 @@ class TransformedNetwork(nn.Module):
                 else:
                     param.requires_grad = False
         self.layers = nn.Sequential(*layers)
-        self.shuffle_lambda(4)
 
-    def shuffle_lambda(self, number_of_relu_to_shuffle):
-        number_relu_shuffled = 0
-        while number_relu_shuffled < number_of_relu_to_shuffle:
-            print(self.layers[number_of_relu_to_shuffle])
-            number_relu_shuffled += 1
+    def shuffle_lambda(self, n_relu_to_shuffle):
+        i_relu_to_shuffle = 0
+        for layer in self.layers:
+            if not isinstance(layer, TransformedReLU):
+                layer.shuffle_lambda()
+                i_relu_to_shuffle += 1
+                if i_relu_to_shuffle >= n_relu_to_shuffle:
+                    break
 
     def get_shape_after_each_layer(self):
         # precompute sizes of the tensor after each layer
@@ -396,10 +413,6 @@ class ZonotopeLoss:
             # will always be bigger than the other labels, and so the classification will be correct
             lower_bound = lower[true_label]
 
-            # If the lower bound of the true label is higher than the upper bound of
-            # any other output, we have verified the input!
-            upper[true_label] = -float('inf')  # Ignore upper bound of the true label
-
             # we want to minimize the max of upper bounds (mean used as max not really
             # differentiable (same issue as L1 norm, improving only one upper bound may
             # come at the cost of worsening other upper bounds, and is potentially quite slow
@@ -411,7 +424,8 @@ class ZonotopeLoss:
             # the true label lower bound and the upper bound of the other labels. We don't care
             # about the upper bound of the true label (because it doesn't matter for verification)
             upper[true_label] = 0
-            loss = torch.mean(upper) - lower_bound
+            # loss = torch.mean(upper) - lower_bound
+            loss = torch.mean(upper)
 
         elif self.kind == 'pseudo_exponential':
             # based on the idea that we want upper bounds of classes that are higher than the lower bound of the
@@ -426,19 +440,27 @@ class ZonotopeLoss:
             poly = 1 + diff
             loss = torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[true_label]
 
+        # WIP
         elif self.kind == 'weighted_L2':
             diff = upper - lower[true_label]
             diff[true_label] = 0
             poly = 1 + diff
             class_weight = torch.exp(diff) * (diff < 0) + poly * (diff >= 0)
             loss = torch.sum(class_weight * torch.sum(output_zonotope[1:] * output_zonotope[1:], dim=0))
+            lower_bound = lower[true_label]
+            upper[true_label] = 0
+            loss += torch.mean(upper) - lower_bound
 
+        # WIP
         elif self.kind == 'weighted_L1':
             diff = upper - lower[true_label]
             diff[true_label] = 0
             poly = 1 + diff
             class_weight = torch.exp(diff) * (diff < 0) + poly * (diff >= 0)
             loss = torch.sum(class_weight * torch.sum(torch.abs(output_zonotope[1:]), dim=0))
+            lower_bound = lower[true_label]
+            upper[true_label] = 0
+            loss += torch.mean(upper) - lower_bound
 
         else:
             raise NotImplementedError(self.kind + " is not a possible loss type")
