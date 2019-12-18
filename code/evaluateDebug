@@ -13,7 +13,7 @@ verified_adversarial=0
 notverified_adversarial=0
 verified_noadversarial=0
 notverified_noadversarial=0
-for net in conv3
+for net in fc2
 do
 	echo Evaluating network ${net}...
 	for spec in `ls ../$folder/${net}`

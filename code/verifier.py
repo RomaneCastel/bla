@@ -9,7 +9,7 @@ import time
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
-MODE = "DEBUG"
+MODE = "NODEBUG"
 VERBOSE = False
 
 torch.set_num_threads(4)
@@ -137,6 +137,8 @@ def main():
     parser.add_argument('--n_relus_to_keep', type=int, required=False, default=10, help='Number of relu layers to keep.')
     parser.add_argument('--useAdam', type=int, required=False, default=0, help='Use Adam')
     args = parser.parse_args()
+
+    
 
     with open(args.spec, 'r') as f:
         lines = [line[:-1] for line in f.readlines()]

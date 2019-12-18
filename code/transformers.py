@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 """
 The goal is to transform a network into zonotope verifier network.
@@ -193,6 +194,10 @@ class TransformedReLU(nn.Module):
         _lambda[_lambda != _lambda] = 0.5
         self.lambda_.data = _lambda
         self.is_lambda_set = True
+        self.lambda_gaussian = MultivariateNormal(self.lambda_.data, torch.eye(self.lambda_.data.shape[0]))
+
+    def shuffle_lambda(self):
+        self.lambda_.data = self.lambda_gaussian.sample()
 
     def forward(self, x, created_terms):
         # x: (1 + h x w x n_channels) x n_channels x width x height
