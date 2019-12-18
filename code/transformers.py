@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
-from torch.distributions.multivariate_normal import Normal
+from torch.distributions.normal import Normal
 
 """
 The goal is to transform a network into zonotope verifier network.
