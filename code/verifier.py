@@ -16,7 +16,7 @@ torch.set_num_threads(4)
 
 
 def analyze(net, inputs, eps, true_label,
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, patience=3):
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relu_to_shuffle=3, patience=3):
     beginning = time.time()
 
     if VERBOSE:
@@ -65,12 +65,14 @@ def analyze(net, inputs, eps, true_label,
         if upper_bound <= lower_bound:
             return 1
 
+        print('previous ', previous_lower , previous_upper)
+        print(lower_bound == previous_lower and upper_bound == previous_upper)
         if lower_bound == previous_lower and upper_bound == previous_upper:
             n_iteration_stuck += 1
 
         if n_iteration_stuck == patience:
             print("Shuffle")
-            transformed_net.shuffle_lambda(patience)
+            transformed_net.shuffle_lambda(n_relu_to_shuffle)
             n_iteration_stuck = 0
 
         previous_lower = lower_bound
