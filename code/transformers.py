@@ -209,13 +209,13 @@ class TransformedReLU(nn.Module):
                       + (lower * upper < 0).type(torch.FloatTensor) \
                       * self.init_value
         self.lambda_.data = _lambda
-        self.lambda_.data = torch.zeros((self.lambda_.data.shape))+0.25
+        #self.lambda_.data = torch.zeros((self.lambda_.data.shape))+0.25
         self.is_lambda_set = True
         std = 1
-        #self.lambda_gaussian = Normal(self.lambda_.data, std) # Uniform(0,1)
+        self.lambda_gaussian = Normal(self.lambda_.data, std) # Uniform(0,1)
 
     def shuffle_lambda(self):
-        self.lambda_gaussian = Normal(self.lambda_.data, 0.5)
+        #self.lambda_gaussian = Normal(self.lambda_.data, 0.5)
         self.lambda_.data = self.lambda_gaussian.sample()
         #self.lambda_.data = self.lambda_gaussian.sample(self.lambda_.data.shape)
         self.clip_lambda()
@@ -260,7 +260,7 @@ class TransformedReLU(nn.Module):
         # for crossing border cases, we modify bias
         # for negative case, we 0 is the new bias
         # for positive case, we don't change anything
-        transformed_x[0] = (self.lambda_ * x[0] - delta / 2) \
+        transformed_x[0] = (self.lambda_ * x[0] + delta / 2) \
                            * (lower * upper < 0).type(torch.FloatTensor) \
                            + x[0] * (lower >= 0).type(torch.FloatTensor)
 
