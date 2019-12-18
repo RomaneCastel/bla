@@ -16,12 +16,8 @@ torch.set_num_threads(4)
 
 
 def analyze(net, inputs, eps, true_label,
-<<<<<<< HEAD
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relu_to_shuffle=3, patience=10):
-=======
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, patience=3, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=3):
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=3, patience=10):
 
->>>>>>> ff7c569f4b1df2dca5a3dda64f7251f3f6fc24d1
     beginning = time.time()
 
     if VERBOSE:
@@ -59,30 +55,33 @@ def analyze(net, inputs, eps, true_label,
         min_upper = torch.min(upper, min_upper)
         max_lower = torch.max(lower, max_lower)
 
-        verficiation_on_normal_bounds = False
-        if verficiation_on_normal_bounds:
-            lower_bound = lower[true_label]
-            upper_bound = torch.max(upper)
-        else:
-            lower_bound = max_lower[true_label]
-            upper_bound = torch.max(min_upper)
+        #verficiation_on_normal_bounds = False
+        lower_bound_run = lower[true_label]
+        upper_bound_run = torch.max(upper)
+        lower_bound_global = max_lower[true_label]
+        upper_bound_global = torch.max(min_upper)
 
-        if upper_bound <= lower_bound:
+
+        if upper_bound_global <= lower_bound_global:
             return 1
 
-        if lower_bound <= previous_lower and upper_bound => previous_upper:
+        if lower_bound_run <= previous_lower and upper_bound_run >= previous_upper:
             n_iteration_stuck += 1
-            
-        previous_lower = lower_bound
-        previous_upper = upper_bound
+        else:
+            n_iteration_stuck = 0
+
+        previous_lower = lower_bound_run
+        previous_upper = upper_bound_run
 
         if n_iteration_stuck == patience:
             print("Shuffle")
             transformed_net.shuffle_lambda(n_relu_to_shuffle)
             n_iteration_stuck = 0
-            upper_bound = torch.Tensor([100000000])
-            lower_bound = torch.Tensor([-100000000])
-        
+            upper_bound_run = None
+            lower_bound_run = None
+            previous_lower = torch.Tensor([100000000])
+            previous_upper = torch.Tensor([-100000000])
+
 
         # otherwise computes loss
         loss = zonotope_loss(upper, lower, output_zonotope, true_label)
@@ -108,8 +107,10 @@ def analyze(net, inputs, eps, true_label,
         if MODE == "DEBUG":
             print("Iteration %i, time taken %f" % (i, time.time() - t0))
             print("\tBounds:")
-            print("\t\tLower bound: %f" % lower_bound)
-            print("\t\tUpper bound: %f" % upper_bound)
+            print("\t\tLower bound global: %f" % lower_bound_global)
+            print("\t\tUpper bound global: %f" % upper_bound_global)
+            print("\t\tLower bound run: %f" % lower_bound_run)
+            print("\t\tUpper bound run: %f" % upper_bound_run)
             upper[true_label] = upper_true_label
             print("\t\tIntervals per class (true class is %d):"%true_label)
             for c in range(10):
@@ -131,7 +132,7 @@ def analyze(net, inputs, eps, true_label,
                     except:
                         print('no weight')
 
-            print("\tFailed: " + str((upper_bound - lower_bound).item()))
+            print("\tFailed: " + str((upper_bound_global - lower_bound_global).item()))
             print("\t\tLoss: %f" % loss.item())
             print("\t\tMean lambda values: " + str(transformed_net.get_mean_lambda_values()))
             print("\tN iterations stuck: %d"%n_iteration_stuck)
