@@ -105,7 +105,7 @@ def analyze(net, inputs, eps, true_label,
             upper[true_label] = upper_true_label
             print("\t\tIntervals per class (true class is %d):"%true_label)
             for c in range(10):
-                print("\t\t\tClass %d: %f +- %f" % (c, (lower[c]+upper[c]).item()/2, (upper[c]-lower[c]).item()/2))
+                print("\t\t\tClass %d: %f +- %f [%f , %f]" % (c, (lower[c]+upper[c]).item()/2, (upper[c]-lower[c]).item()/2, lower[c].item(), upper[c].item()))
             # few sanity checks
             parameters = transformed_net.assert_only_relu_params_changed(parameters)
             transformed_net.assert_valid_lambda_values()
