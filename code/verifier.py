@@ -37,8 +37,8 @@ def analyze(net, inputs, eps, true_label,
     max_lower, min_upper = -float('inf') * torch.ones([10]), float('inf') * torch.ones([10])
 
     n_iteration_stuck = 0
-    previous_lower = max_lower
-    previous_upper = min_upper
+    previous_lower = 100000000
+    previous_upper = -100000000
 
     while should_continue:
         if MODE == "DEBUG":
