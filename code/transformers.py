@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
-from torch.distributions.multivariate_normal import MultivariateNormal
+from torch.distributions.multivariate_normal import Normal
 
 """
 The goal is to transform a network into zonotope verifier network.
@@ -185,7 +185,7 @@ class TransformedReLU(nn.Module):
         # WIP
         self.is_last_relu_layer = is_last_relu_layer
         if self.is_last_relu_layer:
-            self.init_value = 'auto' # 0.9999
+            self.init_value = 'auto'  # 0.9999
         else:
             self.init_value = 'auto'
 
@@ -206,10 +206,12 @@ class TransformedReLU(nn.Module):
                       * self.init_value
         self.lambda_.data = _lambda
         self.is_lambda_set = True
-        self.lambda_gaussian = MultivariateNormal(self.lambda_.data, torch.eye(self.lambda_.data.shape[0]))
+        std = 0.1
+        self.lambda_gaussian = Normal(self.lambda_.data, std)
 
     def shuffle_lambda(self):
         self.lambda_.data = self.lambda_gaussian.sample()
+        self.clip_lambda()
 
     def forward(self, x, created_terms):
         # x: (1 + h x w x n_channels) x n_channels x width x height
@@ -328,13 +330,15 @@ class TransformedNetwork(nn.Module):
                 else:
                     param.requires_grad = False
         self.layers = nn.Sequential(*layers)
-        self.shuffle_lambda(4)
 
-    def shuffle_lambda(self, number_of_relu_to_shuffle):
-        number_relu_shuffled = 0
-        while number_relu_shuffled < number_of_relu_to_shuffle:
-            print(self.layers[number_of_relu_to_shuffle])
-            number_relu_shuffled += 1
+    def shuffle_lambda(self, n_relu_to_shuffle):
+        i_relu_to_shuffle = 0
+        for layer in self.layers:
+            if not isinstance(layer, TransformedReLU):
+                layer.shuffle_lambda()
+                i_relu_to_shuffle += 1
+                if i_relu_to_shuffle >= n_relu_to_shuffle:
+                    break
 
     def get_shape_after_each_layer(self):
         # precompute sizes of the tensor after each layer
