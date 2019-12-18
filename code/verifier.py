@@ -65,7 +65,7 @@ def analyze(net, inputs, eps, true_label,
         if upper_bound <= lower_bound:
             return 1
 
-        if lower_bound == previous_lower and upper_bound == previous_upper:
+        if lower_bound >= previous_lower and upper_bound >= previous_upper:
             n_iteration_stuck += 1
 
         if n_iteration_stuck == patience:
@@ -126,6 +126,7 @@ def analyze(net, inputs, eps, true_label,
             print("\tFailed: " + str((upper_bound - lower_bound).item()))
             print("\t\tLoss: %f" % loss.item())
             print("\t\tMean lambda values: " + str(transformed_net.get_mean_lambda_values()))
+            print("\tN iterations stuck: %d"%n_iteration_stuck)
 
         if slow:
             should_continue = (time.time() - beginning <= 120)

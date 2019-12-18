@@ -206,7 +206,7 @@ class TransformedReLU(nn.Module):
                       * self.init_value
         self.lambda_.data = _lambda
         self.is_lambda_set = True
-        std = 0.1
+        std = 1
         self.lambda_gaussian = Normal(self.lambda_.data, std)
 
     def shuffle_lambda(self):
