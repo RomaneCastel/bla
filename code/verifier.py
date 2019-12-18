@@ -79,8 +79,6 @@ def analyze(net, inputs, eps, true_label,
                 except:
                     print('\tno weight')
 
-        print()
-
         transformed_net.clip_lambdas()
 
         if MODE == "DEBUG":
