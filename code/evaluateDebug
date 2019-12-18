@@ -6,13 +6,14 @@ eps_step=${3:-0.01}
 slow=${4:-0}
 it=${5:-100}
 lr=${6:-0.001}
-useAdam=${7:-0}
+n_relus_to_keep=${7:-10}
+useAdam=${8:-0}
 
 verified_adversarial=0
 notverified_adversarial=0
 verified_noadversarial=0
 notverified_noadversarial=0
-for net in fc1 fc2 fc3 fc4 fc5 conv1 conv2 conv3 conv4 conv5
+for net in conv3
 do
 	echo Evaluating network ${net}...
 	for spec in `ls ../$folder/${net}`
@@ -22,8 +23,8 @@ do
 		then
 			:
 		else
-			echo "python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it --lr $lr --useAdam $useAdam"
-			out=$(python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it --lr $lr --useAdam $useAdam)
+			echo "python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it --lr $lr --n_relus_to_keep $n_relus_to_keep --useAdam $useAdam"
+			out=$(python3 verifier.py --net ${net} --spec ../$folder/${net}/${spec} --slow $slow --it $it --lr $lr --n_relus_to_keep $n_relus_to_keep --useAdam $useAdam)
 			if [ "$out" == "verified" ]
 			then
 				decimals=$(echo ${spec} | cut -d '_' -f 2 | cut -d '.' -f 2)

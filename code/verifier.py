@@ -151,8 +151,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label,
-               args.slow, args.it, args.lr, args.useAdam, args.loss_type, args.n_relus_to_keep):
+    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam, args.loss_type, args.n_relus_to_keep):
         print('verified')
     else:
         print('not verified')
