@@ -16,7 +16,7 @@ torch.set_num_threads(4)
 
 
 def analyze(net, inputs, eps, true_label,
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=3, patience=10):
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=5, patience=2):
 
     beginning = time.time()
 
@@ -75,10 +75,11 @@ def analyze(net, inputs, eps, true_label,
 
         if n_iteration_stuck == patience:
             print("Shuffle")
+            print("\a")
             transformed_net.shuffle_lambda(n_relu_to_shuffle)
             n_iteration_stuck = 0
-            upper_bound_run = None
-            lower_bound_run = None
+            upper_bound_run = torch.Tensor([-100000000])
+            lower_bound_run = torch.Tensor([100000000])
             previous_lower = torch.Tensor([100000000])
             previous_upper = torch.Tensor([-100000000])
 
