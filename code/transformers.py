@@ -211,11 +211,12 @@ class TransformedReLU(nn.Module):
         self.lambda_.data = _lambda
         self.is_lambda_set = True
         std = 1
-        self.lambda_gaussian = Uniform(0, 1) # Normal(self.lambda_.data, std)
+        #self.lambda_gaussian = Normal(self.lambda_.data, std) # Uniform(0,1)
 
     def shuffle_lambda(self):
-        #self.lambda_.data = self.lambda_gaussian.sample()
-        self.lambda_.data = self.lambda_gaussian.sample(self.lambda_.data.shape)
+        self.lambda_gaussian = Normal(self.lambda_.data, 0.1)
+        self.lambda_.data = self.lambda_gaussian.sample()
+        #self.lambda_.data = self.lambda_gaussian.sample(self.lambda_.data.shape)
         self.clip_lambda()
 
     def forward(self, x, created_terms):
