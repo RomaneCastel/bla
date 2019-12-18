@@ -315,6 +315,13 @@ class TransformedNetwork(nn.Module):
                 else:
                     param.requires_grad = False
         self.layers = nn.Sequential(*layers)
+        self.shuffle_lambda(4)
+
+    def shuffle_lambda(self, number_of_relu_to_shuffle):
+        number_relu_shuffled = 0
+        while number_relu_shuffled < number_of_relu_to_shuffle:
+            print(self.layers[number_of_relu_to_shuffle])
+            number_relu_shuffled += 1
 
     def get_shape_after_each_layer(self):
         # precompute sizes of the tensor after each layer

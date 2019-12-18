@@ -35,6 +35,11 @@ def analyze(net, inputs, eps, true_label,
     should_continue = True
     i = 0
     max_lower, min_upper = -float('inf') * torch.ones([10]), float('inf') * torch.ones([10])
+
+    n_iteration_stuck = 0
+    previous_lower = max_lower
+    previous_upper = min_upper
+
     while should_continue:
         if MODE == "DEBUG":
             t0 = time.time()
@@ -59,6 +64,11 @@ def analyze(net, inputs, eps, true_label,
 
         if upper_bound <= lower_bound:
             return 1
+
+        print("lower_bound ", lower_bound)
+        print("previous_lower ", previous_lower)
+        #if lower_bound == previous_lower and upper_bound == previous_upper:
+        #    n_iteration_stuck += 1
 
         # otherwise computes loss
         loss = zonotope_loss(upper, lower, output_zonotope, true_label)
@@ -114,7 +124,7 @@ def analyze(net, inputs, eps, true_label,
             print("\t\tMean lambda values: " + str(transformed_net.get_mean_lambda_values()))
 
         if slow:
-            should_continue = (time.time() - beginning < 110)
+            should_continue = (time.time() - beginning <= 120)
         else:
             i += 1
             should_continue = (i < it)
