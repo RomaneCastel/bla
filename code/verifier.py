@@ -16,7 +16,7 @@ torch.set_num_threads(4)
 
 
 def analyze(net, inputs, eps, true_label,
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10):
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, patience=3):
     beginning = time.time()
 
     if VERBOSE:
