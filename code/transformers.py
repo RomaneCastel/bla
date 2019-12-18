@@ -209,12 +209,13 @@ class TransformedReLU(nn.Module):
                       + (lower * upper < 0).type(torch.FloatTensor) \
                       * self.init_value
         self.lambda_.data = _lambda
+        self.lambda_.data = torch.zeros((self.lambda_.data.shape))+0.25
         self.is_lambda_set = True
         std = 1
         #self.lambda_gaussian = Normal(self.lambda_.data, std) # Uniform(0,1)
 
     def shuffle_lambda(self):
-        self.lambda_gaussian = Normal(self.lambda_.data, 0.1)
+        self.lambda_gaussian = Normal(self.lambda_.data, 0.5)
         self.lambda_.data = self.lambda_gaussian.sample()
         #self.lambda_.data = self.lambda_gaussian.sample(self.lambda_.data.shape)
         self.clip_lambda()
