@@ -4,7 +4,7 @@ folder=${1:-"test_cases"}
 slow=${2:-0}
 it=${3:-100}
 
-for net in fc5
+for net in conv2
 do
 	echo Evaluating network ${net}...
 	for spec in `ls ../$folder/${net}`
