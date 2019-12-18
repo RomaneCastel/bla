@@ -65,10 +65,16 @@ def analyze(net, inputs, eps, true_label,
         if upper_bound <= lower_bound:
             return 1
 
-        print("lower_bound ", lower_bound)
-        print("previous_lower ", previous_lower)
-        #if lower_bound == previous_lower and upper_bound == previous_upper:
-        #    n_iteration_stuck += 1
+
+        if lower_bound == previous_lower and upper_bound == previous_upper:
+            n_iteration_stuck += 1
+
+        if n_iteration_stuck == patience:
+            transformed_net.shuffle_lambda(patience)
+            n_iteration_stuck = 0
+
+        previous_lower = lower_bound
+        previous_upper = upper_bound
 
         # otherwise computes loss
         loss = zonotope_loss(upper, lower, output_zonotope, true_label)
