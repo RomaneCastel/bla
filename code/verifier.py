@@ -9,7 +9,7 @@ import time
 
 DEVICE = 'cpu'
 INPUT_SIZE = 28
-MODE = "NODEBUG"
+MODE = "DEBUG"
 VERBOSE = False
 
 torch.set_num_threads(4)
@@ -65,11 +65,11 @@ def analyze(net, inputs, eps, true_label,
         if upper_bound <= lower_bound:
             return 1
 
-
         if lower_bound == previous_lower and upper_bound == previous_upper:
             n_iteration_stuck += 1
 
         if n_iteration_stuck == patience:
+            print("Shuffle")
             transformed_net.shuffle_lambda(patience)
             n_iteration_stuck = 0
 

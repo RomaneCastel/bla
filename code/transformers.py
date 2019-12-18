@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
-from torch.distributions.multivariate_normal import Normal
+from torch.distributions import Normal
 
 """
 The goal is to transform a network into zonotope verifier network.
@@ -357,7 +357,7 @@ class TransformedNetwork(nn.Module):
     def shuffle_lambda(self, n_relu_to_shuffle):
         i_relu_to_shuffle = 0
         for layer in self.layers:
-            if not isinstance(layer, TransformedReLU):
+            if isinstance(layer, TransformedReLU):
                 layer.shuffle_lambda()
                 i_relu_to_shuffle += 1
                 if i_relu_to_shuffle >= n_relu_to_shuffle:
