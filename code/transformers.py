@@ -260,7 +260,7 @@ class TransformedReLU(nn.Module):
         # for crossing border cases, we modify bias
         # for negative case, we 0 is the new bias
         # for positive case, we don't change anything
-        transformed_x[0] = (delta / 2 + self.lambda_ * x[0]) \
+        transformed_x[0] = (self.lambda_ * x[0] - delta / 2) \
                            * (lower * upper < 0).type(torch.FloatTensor) \
                            + x[0] * (lower >= 0).type(torch.FloatTensor)
 
