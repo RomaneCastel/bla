@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks import FullyConnected, Conv, Normalization
-from torch.distributions import Normal
+from torch.distributions import Normal, Uniform
 
 """
 The goal is to transform a network into zonotope verifier network.
@@ -211,10 +211,11 @@ class TransformedReLU(nn.Module):
         self.lambda_.data = _lambda
         self.is_lambda_set = True
         std = 1
-        self.lambda_gaussian = Normal(self.lambda_.data, std)
+        self.lambda_gaussian = Uniform(0, 1) # Normal(self.lambda_.data, std)
 
     def shuffle_lambda(self):
-        self.lambda_.data = self.lambda_gaussian.sample()
+        #self.lambda_.data = self.lambda_gaussian.sample()
+        self.lambda_.data = self.lambda_gaussian.sample(self.lambda_.data.shape)
         self.clip_lambda()
 
     def forward(self, x, created_terms):
@@ -278,6 +279,11 @@ class TransformedReLU(nn.Module):
     def clip_lambda(self):
         # clips lambda into [0, 1] (might happen after gradient descent)
         self.lambda_.data.clamp_(min=0, max=1)
+
+        # replace NaNs with 0.5
+        self.lambda_.data[self.lambda_.data != self.lambda_.data] = 0.5
+
+
 
 
 # general layer transformer class that, when given a layer, returns the corresponding transformed layer
@@ -397,9 +403,9 @@ class TransformedNetwork(nn.Module):
             for param in layer.parameters():
                 if isinstance(layer, TransformedReLU):
                     assert torch.max(param) <= 1, \
-                        'Some lambda values over 1'
+                        'Some lambda values over 1 (%f)' % torch.max(param)
                     assert torch.min(param) >= 0, \
-                        'Some lambda values under 0'
+                        'Some lambda values under 0 (%f)' % torch.min(param)
 
     def get_mean_lambda_values(self):
         # return mean lambda for every relu layer, for debugging purposes
