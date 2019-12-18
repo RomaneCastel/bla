@@ -16,13 +16,13 @@ torch.set_num_threads(4)
 
 
 def analyze(net, inputs, eps, true_label,
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, patience=3):
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, patience=3, n_relus_to_initialize_with_gaussian=0):
     beginning = time.time()
 
     if VERBOSE:
         print("net: ", net)
 
-    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=n_relus_to_keep)
+    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=n_relus_to_keep, n_relus_to_initialize_with_gaussian=n_relus_to_initialize_with_gaussian)
     parameters = list(transformed_net.get_params())
 
     zonotope_loss = ZonotopeLoss(kind=loss_type)
@@ -149,10 +149,12 @@ def main():
     parser.add_argument('--loss_type', type=str, required=False, default='mean', help='Type of loss used.')
     parser.add_argument('--lr', type=float, required=False, default=0.001, help='Learning rate.')
     parser.add_argument('--n_relus_to_keep', type=int, required=False, default=10, help='Number of relu layers to keep.')
+    parser.add_argument('--n_relus_to_initialize_with_gaussian', type=int, required=False, default=0, help='Number of relu layers to initialize lambdas by sampling from gaussian around the optimal value.')
+    parser.add_argument('--patience', type=int, required=False, default=3, help='Patience ')
     parser.add_argument('--useAdam', type=int, required=False, default=0, help='Use Adam')
     args = parser.parse_args()
 
-    
+
 
     with open(args.spec, 'r') as f:
         lines = [line[:-1] for line in f.readlines()]
@@ -167,7 +169,7 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam, args.loss_type, args.n_relus_to_keep):
+    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam, args.loss_type, args.n_relus_to_keep, args.patience, args.n_relus_to_initialize_with_gaussian):
         print('verified')
     else:
         print('not verified')

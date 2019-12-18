@@ -181,6 +181,7 @@ class TransformedReLU(nn.Module):
         self.lambda_ = nn.Parameter(torch.Tensor(shape), requires_grad=True)
         # if we have already initialized lambda
         self.is_lambda_set = False
+        self.initialize_with_gaussian = False
 
         # WIP
         self.is_last_relu_layer = is_last_relu_layer
@@ -188,6 +189,9 @@ class TransformedReLU(nn.Module):
             self.init_value = 'auto'  # 0.9999
         else:
             self.init_value = 'auto'
+
+    def should_initialize_with_gaussian(self):
+        self.initialize_with_gaussian = True
 
     def _set_lambda(self, lower, upper):
         if self.init_value == 'auto':
@@ -224,6 +228,10 @@ class TransformedReLU(nn.Module):
         # lambda has a size of ((n_c x h x w) || vector_size)
         if not self.is_lambda_set:
             self._set_lambda(lower, upper)
+
+            # We may want to
+            if self.initialize_with_gaussian:
+                self.shuffle_lambda()
 
         # terms that have new error weights
         has_new_error_term = (lower * upper < 0).type(torch.FloatTensor)
@@ -293,7 +301,7 @@ class LayerTransformer:
 
 # transformed network
 class TransformedNetwork(nn.Module):
-    def __init__(self, network, eps, input_size, n_relus_to_keep=10000):
+    def __init__(self, network, eps, input_size, n_relus_to_keep=10000, n_relus_to_initialize_with_gaussian=0):
         # n_relus_to_keep is the number of ReLU layers that will have their parameters free to move, starting from
         # the deepest layers
         super().__init__()
@@ -329,6 +337,21 @@ class TransformedNetwork(nn.Module):
                     param.requires_grad = relu_layer_to_keep[i]
                 else:
                     param.requires_grad = False
+
+        # Initialize the lambdas of the first X Relu transformers by sampling
+        # from a Gaussian around the optimal values
+        if n_relus_to_initialize_with_gaussian > 0:
+            n_relus_left_to_initialize = n_relus_to_initialize_with_gaussian
+            for i, layer in enumerate(layers):
+                if isinstance(layer, TransformedReLU):
+                    layer.should_initialize_with_gaussian()
+                    n_relus_left_to_initialize -= 1
+
+                    if n_relus_left_to_initialize == 0:
+                        break
+
+
+
         self.layers = nn.Sequential(*layers)
 
     def shuffle_lambda(self, n_relu_to_shuffle):
