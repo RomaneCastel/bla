@@ -16,14 +16,16 @@ torch.set_num_threads(4)
 
 
 def analyze(net, inputs, eps, true_label,
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=5, patience=100):
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean',
+            n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=5, patience=100):
 
     beginning = time.time()
 
     if VERBOSE:
         print("net: ", net)
 
-    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=n_relus_to_keep, n_relus_to_initialize_with_gaussian=n_relus_to_initialize_with_gaussian)
+    transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=n_relus_to_keep,
+                                         n_relus_to_initialize_with_gaussian=n_relus_to_initialize_with_gaussian)
     parameters = list(transformed_net.get_params())
 
     zonotope_loss = ZonotopeLoss(kind=loss_type)
@@ -176,7 +178,10 @@ def main():
     pred_label = outs.max(dim=1)[1].item()
     assert pred_label == true_label
 
-    if analyze(net, inputs, eps, true_label, args.slow, args.it, args.lr, args.useAdam, args.loss_type, args.n_relus_to_keep, args.patience, args.n_relus_to_initialize_with_gaussian):
+    if analyze(net, inputs, eps, true_label,
+               slow=args.slow, it=args.it, learning_rate=args.lr, use_adam=args.useAdam,
+               loss_type=args.loss_type, n_relus_to_keep=args.n_relus_to_keep, patience=args.patience,
+               n_relu_to_shuffle=args.n_relus_to_initialize_with_gaussian):
         print('verified')
     else:
         print('not verified')
