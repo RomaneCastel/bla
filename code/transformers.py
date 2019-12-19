@@ -176,48 +176,36 @@ class TransformedFlatten(nn.Module):
 
 
 class TransformedReLU(nn.Module):
-    def __init__(self, shape, is_last_relu_layer=False):
+    def __init__(self, shape):
         super().__init__()
         self.lambda_ = nn.Parameter(torch.Tensor(shape), requires_grad=True)
         # if we have already initialized lambda
         self.is_lambda_set = False
         self.initialize_with_gaussian = False
 
-        # WIP
-        self.is_last_relu_layer = is_last_relu_layer
-        if self.is_last_relu_layer:
-            self.init_value = 'auto'  # 0.9999
-        else:
-            self.init_value = 'auto'
-
     def should_initialize_with_gaussian(self):
         self.initialize_with_gaussian = True
 
     def _set_lambda(self, lower, upper):
-        if self.init_value == 'auto':
-            # set as its optimal area value
-            #  if u <= 0, l = 0
-            #  if l >= 0, l = 1
-            #  else l = u / (u-l)
-            _lambda = (lower >= 0).type(torch.FloatTensor) \
-                      + (lower * upper < 0).type(torch.FloatTensor) \
-                      * upper / (upper - lower)
-            # set all nans to 1
-            _lambda[_lambda != _lambda] = 0.5
-        else:
-            _lambda = (lower >= 0).type(torch.FloatTensor) \
-                      + (lower * upper < 0).type(torch.FloatTensor) \
-                      * self.init_value
+        # set as its optimal area value
+        #  if u <= 0, l = 0
+        #  if l >= 0, l = 1
+        #  else l = u / (u-l)
+        _lambda = (lower >= 0).type(torch.FloatTensor) \
+                   + (lower * upper < 0).type(torch.FloatTensor) \
+                   * upper / (upper - lower)
+
+        # set all nans to 0.5
+        _lambda[_lambda != _lambda] = 0.5
+
         self.lambda_.data = _lambda
-        #self.lambda_.data = torch.zeros((self.lambda_.data.shape))+0.25
         self.is_lambda_set = True
-        std = 1
+
+        std = 0.1
         self.lambda_gaussian = Normal(self.lambda_.data, std) # Uniform(0,1)
 
     def shuffle_lambda(self):
-        #self.lambda_gaussian = Normal(self.lambda_.data, 0.5)
         self.lambda_.data = self.lambda_gaussian.sample()
-        #self.lambda_.data = self.lambda_gaussian.sample(self.lambda_.data.shape)
         self.clip_lambda()
 
     def forward(self, x, created_terms):
@@ -232,7 +220,6 @@ class TransformedReLU(nn.Module):
         if not self.is_lambda_set:
             self._set_lambda(lower, upper)
 
-            # We may want to
             if self.initialize_with_gaussian:
                 self.shuffle_lambda()
 
@@ -290,7 +277,7 @@ class TransformedReLU(nn.Module):
 
 # general layer transformer class that, when given a layer, returns the corresponding transformed layer
 class LayerTransformer:
-    def __call__(self, layer, shape, is_last_relu_layer=False):
+    def __call__(self, layer, shape):
         # shape is for ReLU layers
         # layer type dependent transformation
         if isinstance(layer, Normalization):
@@ -302,7 +289,7 @@ class LayerTransformer:
         elif isinstance(layer, nn.Flatten):
             return TransformedFlatten()
         elif isinstance(layer, nn.ReLU):
-            return TransformedReLU(shape, is_last_relu_layer=is_last_relu_layer)
+            return TransformedReLU(shape)
         else:
             raise NotImplementedError('Unknown layer')
 
@@ -313,6 +300,10 @@ class TransformedNetwork(nn.Module):
         # n_relus_to_keep is the number of ReLU layers that will have their parameters free to move, starting from
         # the deepest layers
         super().__init__()
+
+        self.first_time = True
+        self.saved_zonotope = None
+
         # if conv network
         self.input_size = [1, 1, input_size, input_size]
         self.initial_network_layers = network.layers
@@ -320,22 +311,23 @@ class TransformedNetwork(nn.Module):
 
         layer_names = [type(l).__name__ for l in self.initial_network_layers]
         is_relu_layer = [name == 'ReLU' for i, name in enumerate(layer_names)]
-        last_relu_layer = [i for i, b in enumerate(is_relu_layer) if b][-1]
 
         layers = [TransformedInput(eps)]
         transformer = LayerTransformer()
         for i, layer in enumerate(self.initial_network_layers):
-            layers.append(transformer(layer, shapes[i], is_last_relu_layer=(last_relu_layer==i)))
+            layers.append(transformer(layer, shapes[i]))
 
         relu_layer_to_freeze = is_relu_layer
+        self.first_relu_kept = len(layer_names) - 1
         if n_relus_to_keep >= 1:
             for i in range(len(relu_layer_to_freeze)-1, -1, -1):
                 if relu_layer_to_freeze[i]:
                     relu_layer_to_freeze[i] = False
                     n_relus_to_keep -= 1
+                    self.first_relu_kept = i
                 if n_relus_to_keep == 0:
                     break
-        relu_layer_to_keep = [not e for e in relu_layer_to_freeze]
+        relu_layer_to_keep = [False] + [not e for e in relu_layer_to_freeze]
         # note: other layers than ReLU are marked as True but we will not keep active their gradients
 
         for i, layer in enumerate(layers):
@@ -346,19 +338,15 @@ class TransformedNetwork(nn.Module):
                 else:
                     param.requires_grad = False
 
-        # Initialize the lambdas of the first X Relu transformers by sampling
+        # Initialize the lambdas of the first ReLU transformers by sampling
         # from a Gaussian around the optimal values
         if n_relus_to_initialize_with_gaussian > 0:
-            n_relus_left_to_initialize = n_relus_to_initialize_with_gaussian
             for i, layer in enumerate(layers):
                 if isinstance(layer, TransformedReLU):
                     layer.should_initialize_with_gaussian()
-                    n_relus_left_to_initialize -= 1
-
-                    if n_relus_left_to_initialize == 0:
+                    n_relus_to_initialize_with_gaussian -= 1
+                    if n_relus_to_initialize_with_gaussian == 0:
                         break
-
-
 
         self.layers = nn.Sequential(*layers)
 
@@ -427,10 +415,19 @@ class TransformedNetwork(nn.Module):
         return params
 
     def forward(self, x):
-        created_terms = []
-        for i, layer in enumerate(self.layers):
-            x, created_terms = layer.forward(x, created_terms)
-        return x
+        if self.first_time:
+            created_terms = []
+            for i, layer in enumerate(self.layers):
+                x, created_terms = layer.forward(x, created_terms)
+                if i == self.first_relu_kept - 1:
+                    self.saved_zonotope = (x.detach(), [e.detach() for e in created_terms])
+            self.first_time = False
+            return x
+        else:
+            x, created_terms = self.saved_zonotope
+            for i in range(self.first_relu_kept, len(self.layers)):
+                x, created_terms = self.layers[i].forward(x, created_terms)
+            return x
 
 
 class ZonotopeLoss:
@@ -455,8 +452,7 @@ class ZonotopeLoss:
             # the true label lower bound and the upper bound of the other labels. We don't care
             # about the upper bound of the true label (because it doesn't matter for verification)
             upper[true_label] = 0
-            # loss = torch.mean(upper) - lower_bound
-            loss = torch.mean(upper)
+            loss = torch.mean(upper) - lower_bound
 
         elif self.kind == 'pseudo_exponential':
             # based on the idea that we want upper bounds of classes that are higher than the lower bound of the
@@ -470,6 +466,12 @@ class ZonotopeLoss:
 
             poly = 1 + diff
             loss = torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[true_label]
+
+        elif self.kind == 'squared_pseudo_exponential':
+            diff = upper - lower[true_label]
+            diff[true_label] = 0
+            poly = 1 + diff
+            loss = (torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[true_label])**2
 
         # WIP
         elif self.kind == 'weighted_L2':

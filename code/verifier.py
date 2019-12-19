@@ -16,7 +16,7 @@ torch.set_num_threads(4)
 
 
 def analyze(net, inputs, eps, true_label,
-            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=5, patience=2):
+            slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean', n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=5, patience=100):
 
     beginning = time.time()
 
@@ -55,12 +55,10 @@ def analyze(net, inputs, eps, true_label,
         min_upper = torch.min(upper, min_upper)
         max_lower = torch.max(lower, max_lower)
 
-        #verficiation_on_normal_bounds = False
         lower_bound_run = lower[true_label]
         upper_bound_run = torch.max(upper)
         lower_bound_global = max_lower[true_label]
         upper_bound_global = torch.max(min_upper)
-
 
         if upper_bound_global <= lower_bound_global:
             return 1
@@ -77,9 +75,8 @@ def analyze(net, inputs, eps, true_label,
             print("Shuffle")
             print("\a")
             transformed_net.shuffle_lambda(n_relu_to_shuffle)
+            transformed_net.first_time = True
             n_iteration_stuck = 0
-            upper_bound_run = torch.Tensor([-100000000])
-            lower_bound_run = torch.Tensor([100000000])
             previous_lower = torch.Tensor([100000000])
             previous_upper = torch.Tensor([-100000000])
 
@@ -164,7 +161,6 @@ def main():
     parser.add_argument('--patience', type=int, required=False, default=3, help='Patience ')
     parser.add_argument('--useAdam', type=int, required=False, default=0, help='Use Adam')
     args = parser.parse_args()
-
 
 
     with open(args.spec, 'r') as f:
