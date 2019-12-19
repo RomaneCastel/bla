@@ -12,16 +12,16 @@ INPUT_SIZE = 28
 MODE = "DEBUG"
 VERBOSE = False
 
-torch.set_num_threads(4)
+#torch.set_num_threads(1)
 
 
 def analyze(net, inputs, eps, true_label,
             slow=False, it=100, learning_rate=0.01, use_adam=False, loss_type='mean',
-            n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=5, patience=100):
+            n_relus_to_keep=10, n_relus_to_initialize_with_gaussian=0, n_relu_to_shuffle=5, patience=10000):
 
     beginning = time.time()
 
-    if VERBOSE:
+    if True:
         print("net: ", net)
 
     transformed_net = TransformedNetwork(net, eps, INPUT_SIZE, n_relus_to_keep=n_relus_to_keep,
@@ -36,7 +36,7 @@ def analyze(net, inputs, eps, true_label,
         optimizer = optim.SGD(transformed_net.parameters(), lr=learning_rate, momentum=0.9)
 
     should_continue = True
-    i = 0
+    epoch = 0
     max_lower, min_upper = -float('inf') * torch.ones([10]), float('inf') * torch.ones([10])
 
     n_iteration_stuck = 0
@@ -47,14 +47,21 @@ def analyze(net, inputs, eps, true_label,
         if MODE == "DEBUG":
             t0 = time.time()
 
+        # Decrease the learning rate 2x every 10 iterations
+        #lr = learning_rate * (0.5 ** (epoch // 10))
+        #for param_group in optimizer.param_groups:
+        #    param_group['lr'] = lr
+
         # torch.autograd.set_detect_anomaly(True)
         output_zonotope = transformed_net.forward(inputs[0])
 
         # check if we can verify
         upper, lower = upper_lower(output_zonotope)
+
         upper_true_label = upper[true_label].item()
         upper[true_label] = -float('inf')
         min_upper = torch.min(upper, min_upper)
+        
         max_lower = torch.max(lower, max_lower)
 
         lower_bound_run = lower[true_label]
@@ -64,6 +71,28 @@ def analyze(net, inputs, eps, true_label,
 
         if upper_bound_global <= lower_bound_global:
             return 1
+
+
+
+        # Check if all violations are less than )
+        loss = 0
+        pos = 0
+        diff = torch.zeros((output_zonotope.shape[0], 9))
+        for i in range(len(upper)):
+            if i != true_label:
+                diff[:, pos] = output_zonotope[:, i] - output_zonotope[:, true_label]
+                pos += 1
+        
+
+        up, low = upper_lower(diff)
+        if torch.max(up) < 0:
+            return 1
+
+
+
+
+
+
 
         if lower_bound_run <= previous_lower and upper_bound_run >= previous_upper:
             n_iteration_stuck += 1
@@ -105,7 +134,7 @@ def analyze(net, inputs, eps, true_label,
         transformed_net.clip_lambdas()
 
         if MODE == "DEBUG":
-            print("Iteration %i, time taken %f" % (i, time.time() - t0))
+            print("Iteration %i, time taken %f" % (epoch, time.time() - t0))
             print("\tBounds:")
             print("\t\tLower bound global: %f" % lower_bound_global)
             print("\t\tUpper bound global: %f" % upper_bound_global)
@@ -136,12 +165,13 @@ def analyze(net, inputs, eps, true_label,
             print("\t\tLoss: %f" % loss.item())
             print("\t\tMean lambda values: " + str(transformed_net.get_mean_lambda_values()))
             print("\tN iterations stuck: %d"%n_iteration_stuck)
+            print("\tTau: %f"%zonotope_loss.tau)
 
+        epoch += 1
         if slow:
             should_continue = (time.time() - beginning <= 120)
         else:
-            i += 1
-            should_continue = (i < it)
+            should_continue = (epoch < it)
 
     return 0
 
@@ -160,7 +190,7 @@ def main():
     parser.add_argument('--lr', type=float, required=False, default=0.001, help='Learning rate.')
     parser.add_argument('--n_relus_to_keep', type=int, required=False, default=10, help='Number of relu layers to keep.')
     parser.add_argument('--n_relus_to_initialize_with_gaussian', type=int, required=False, default=0, help='Number of relu layers to initialize lambdas by sampling from gaussian around the optimal value.')
-    parser.add_argument('--patience', type=int, required=False, default=3, help='Patience ')
+    parser.add_argument('--patience', type=int, required=False, default=1000, help='Patience ')
     parser.add_argument('--useAdam', type=int, required=False, default=0, help='Use Adam')
     args = parser.parse_args()
 

@@ -188,8 +188,8 @@ class TransformedReLU(nn.Module):
 
     def _set_lambda(self, lower, upper):
         # set as its optimal area value
-        #  if u <= 0, l = 0
-        #  if l >= 0, l = 1
+        #  if u <= 0
+        #  if l >= 0
         #  else l = u / (u-l)
         _lambda = (lower >= 0).type(torch.FloatTensor) \
                    + (lower * upper < 0).type(torch.FloatTensor) \
@@ -260,10 +260,10 @@ class TransformedReLU(nn.Module):
                                       + x[1:] * (lower >= 0).type(torch.FloatTensor)
 
         # filling new error terms
-        created_terms = []
-        new_error_terms(delta/2, has_new_error_term, transformed_x, x.shape[0], created_terms)
+        new_created_terms = []
+        new_error_terms(delta/2, has_new_error_term, transformed_x, x.shape[0], new_created_terms)
 
-        return transformed_x, created_terms
+        return transformed_x, new_created_terms
 
     def clip_lambda(self):
         # clips lambda into [0, 1] (might happen after gradient descent)
@@ -424,6 +424,7 @@ class TransformedNetwork(nn.Module):
             self.first_time = False
             return x
         else:
+            print(self.first_relu_kept)
             x, created_terms = self.saved_zonotope
             for i in range(self.first_relu_kept, len(self.layers)):
                 x, created_terms = self.layers[i].forward(x, created_terms)
@@ -433,6 +434,7 @@ class TransformedNetwork(nn.Module):
 class ZonotopeLoss:
     def __init__(self, kind='mean'):
         self.kind = kind
+        self.tau = 0
 
     def __call__(self, upper, lower, output_zonotope, true_label):
         if self.kind == 'mean':
@@ -454,6 +456,62 @@ class ZonotopeLoss:
             upper[true_label] = 0
             loss = torch.mean(upper) - lower_bound
 
+        elif self.kind == 'revolution':
+            #print(upper)lower
+            lower_bound = lower[true_label]
+            loss = 0
+            for i in range(len(upper)):
+                if i != true_label and upper[i] >= lower_bound:
+                    loss += upper[i]-lower_bound
+
+        elif self.kind == 'violation':
+            lower_bound = lower[true_label]
+            loss = 0
+            for i in range(len(upper)):
+                if i != true_label:
+                    diff = output_zonotope[:, true_label] - output_zonotope[:, i]
+                    up, low = upper_lower(diff)
+                    loss += up - low
+        
+        elif self.kind == 'violation2':
+            diff = torch.zeros((output_zonotope.shape[0], 9))
+            pos = 0
+            for i in range(len(upper)):
+                if i != true_label:
+                    diff[:, pos] = output_zonotope[:, true_label] - output_zonotope[:, i]
+                    pos += 1
+            
+            up, low = upper_lower(diff)
+            loss = -torch.min(low)
+        
+        elif self.kind == 'vechev':
+            diff = torch.zeros((output_zonotope.shape[0], 9))
+            loss = 0
+            pos = 0
+            for i in range(len(upper)):
+                if i != true_label:
+                    diff[:, pos] = output_zonotope[:, i] - output_zonotope[:, true_label]
+                    pos += 1
+            
+
+            up, low = upper_lower(diff)
+            print(up)
+            shouldDecreaseTau = True
+
+            maxUp = torch.max(up.detach())
+            # Update tau when unitialized or too high
+            if self.tau is None or torch.max(up) < self.tau:
+                self.tau = maxUp * 0.9
+
+
+            for i in range(len(low)):
+                loss += torch.max(torch.zeros((1, )), up[i] - self.tau)
+            
+
+            
+
+            
+
         elif self.kind == 'pseudo_exponential':
             # based on the idea that we want upper bounds of classes that are higher than the lower bound of the
             # true class to be highly reduce, and the one that are lower not to be changed we use an exponential
@@ -470,7 +528,7 @@ class ZonotopeLoss:
         elif self.kind == 'squared_pseudo_exponential':
             diff = upper - lower[true_label]
             diff[true_label] = 0
-            poly = 1 + diff
+            poly = 1 + difftorch.float32 
             loss = (torch.sum(torch.exp(diff) * (diff < 0) + poly * (diff >= 0)) - lower[true_label])**2
 
         # WIP
