@@ -27,7 +27,7 @@ X_train_flattened = np.zeros((len(X_train), 28*28))
 for j in range(len(X_train)):
 	X_train_flattened[j] = X_train[j].flatten() / 255
 
-epsilon = 0.005
+epsilon = 0.1
 image = 0
 folders = ['conv1', 'conv2', 'conv3', 'conv4', 'conv5','fc1','fc2','fc3','fc4','fc5']
 folder = 0
@@ -42,6 +42,6 @@ for i in range(len(X_train)):
 	folder += 1
 	folder %= 10
 	if folder == 0:
-		epsilon += (0.2 - 0.005) / (int(args.nbexamples) - 1)
+		epsilon += (0.2 - 0.1) / (int(args.nbexamples) - 1)
 		if epsilon > 0.2:
-			epsilon = 0.005
+			epsilon = 0.1
